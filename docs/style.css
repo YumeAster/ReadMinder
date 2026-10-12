@@ -31,6 +31,19 @@ button {
   min-height: 1.5em;
 }
 
+#duplicate-notice {
+  padding: 0.5rem;
+  border: 1px solid #b00020;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+#duplicate-notice[hidden] {
+  display: none;
+}
+
 ul {
   list-style: none;
   padding: 0;
@@ -51,4 +64,8 @@ li a {
   font-size: 0.85rem;
   color: #555;
   word-break: break-all;
+}
+
+li.highlight {
+  background: #fff3b0;
 }

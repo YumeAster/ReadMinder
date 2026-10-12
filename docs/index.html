@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>링크 저장</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>링크 저장</h1>
+
+      <form id="link-form" novalidate>
+        <label for="url-input">주소</label>
+        <input id="url-input" type="text" inputmode="url" autocomplete="off" placeholder="https://example.com" />
+
+        <label for="title-input">제목 (선택)</label>
+        <input id="title-input" type="text" autocomplete="off" placeholder="비워두면 도메인이 제목이 됩니다" />
+
+        <button type="submit">저장</button>
+      </form>
+
+      <p id="message" role="alert"></p>
+
+      <h2>저장한 링크</h2>
+      <p id="empty-notice">아직 저장한 링크가 없습니다. 위에 주소를 입력해 저장해 보세요.</p>
+      <ul id="link-list"></ul>
+    </main>
+
+    <script type="module" src="main.js"></script>
+  </body>
+</html>

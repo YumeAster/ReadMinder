@@ -1,0 +1,54 @@
+/* 1단계는 기능 확인용 최소 스타일. 디자인은 기능 완성 후 한 번에 처리한다. */
+body {
+  font-family: sans-serif;
+  line-height: 1.5;
+  margin: 0;
+}
+
+main {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+form {
+  display: grid;
+  gap: 0.5rem;
+}
+
+input {
+  font: inherit;
+  padding: 0.4rem;
+}
+
+button {
+  font: inherit;
+  padding: 0.5rem;
+}
+
+#message {
+  color: #b00020;
+  min-height: 1.5em;
+}
+
+ul {
+  list-style: none;
+  padding: 0;
+}
+
+li {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #ccc;
+}
+
+li a {
+  font-weight: bold;
+  word-break: break-all;
+}
+
+.link-url,
+.link-date {
+  font-size: 0.85rem;
+  color: #555;
+  word-break: break-all;
+}

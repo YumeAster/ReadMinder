@@ -515,6 +515,8 @@ function handleAddCategory(): void {
   }
 
   categories = result.value.categories;
+  // 관리 영역뿐 아니라 왼쪽 카테고리 목록과 링크별 선택 상자에도 새 카테고리가 나타나야 한다.
+  render();
   renderCategoryManager();
   categoryNameInput.value = "";
   // 입력한 이름이 공백 정리 등으로 달라졌을 수 있어서, 실제로 저장된 이름을 보여준다.
@@ -555,6 +557,7 @@ function handleRenameCategory(categoryId: string): void {
   }
 
   categories = result.value.categories;
+  render(); // 왼쪽 카테고리 목록과 링크별 선택 상자의 이름도 바뀌어야 한다.
   renderCategoryManager();
   showStatus(`"${target.name}" 카테고리의 이름을 "${result.value.category.name}"(으)로 바꿨습니다.`);
   findCategoryInput(categoryId)?.focus();

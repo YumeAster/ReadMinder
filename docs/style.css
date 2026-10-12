@@ -111,3 +111,20 @@ li.seen .link-date {
   margin-left: 0.5rem;
   font-size: 0.85rem;
 }
+
+#bookmarklet-section {
+  margin-top: 1rem;
+}
+
+#bookmarklet-section summary {
+  cursor: pointer;
+  font-weight: bold;
+}
+
+#bookmarklet-local-warning {
+  color: #b26a00;
+}
+
+#bookmarklet-app-url {
+  word-break: break-all;
+}

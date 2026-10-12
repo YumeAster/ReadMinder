@@ -6,6 +6,7 @@ import {
   restoreFromTrash,
   toggleSeen,
 } from "./links.js";
+import { buildBookmarklet, isLocalAddress } from "./bookmarklet.js";
 import { parseImportHash } from "./import.js";
 import { isListStorageKey, loadLinks, loadTrash, saveLinks, saveTrash } from "./storage.js";
 import type { Result, SavedLink, TrashedLink } from "./types.js";
@@ -36,6 +37,10 @@ const trashSummary = getElement("trash-summary", HTMLElement);
 const trashNotice = getElement("trash-notice", HTMLParagraphElement);
 const trashEmptyNotice = getElement("trash-empty", HTMLParagraphElement);
 const trashList = getElement("trash-list", HTMLUListElement);
+const bookmarkletLink = getElement("bookmarklet-link", HTMLAnchorElement);
+const copyBookmarkletButton = getElement("copy-bookmarklet", HTMLButtonElement);
+const bookmarkletAppUrl = getElement("bookmarklet-app-url", HTMLElement);
+const bookmarkletLocalWarning = getElement("bookmarklet-local-warning", HTMLParagraphElement);
 
 /** 이동한 항목을 강조해 두는 시간. 눈으로 위치를 찾기에 충분한 정도로 잡았다. */
 const HIGHLIGHT_MS = 2000;
@@ -394,6 +399,45 @@ form.addEventListener("submit", (event) => {
   }
 });
 
+/** 이 앱이 열려 있는 주소로 북마클릿을 만들어 설치 영역에 연결한다. */
+function setUpBookmarklet(): void {
+  // 북마클릿이 돌아올 앱 주소다. 검색 문자열과 #는 뺀다 (#는 가져오기 전달용으로 따로 붙인다).
+  const appUrl = new URL(window.location.href);
+  appUrl.hash = "";
+  appUrl.search = "";
+
+  const code = buildBookmarklet(appUrl.href);
+  bookmarkletLink.href = code;
+  bookmarkletAppUrl.textContent = appUrl.href;
+  bookmarkletLocalWarning.hidden = !isLocalAddress(appUrl.hostname);
+
+  // 이 링크는 앱 안에서 눌러 쓰는 것이 아니라 북마크 바로 끌어다 놓는 것이다.
+  // 눌렀을 때 앱 페이지에서 코드가 실행되지 않게 막고 사용법을 알려준다. (가운데 버튼 클릭도 막는다.)
+  const explainLink = (event: Event): void => {
+    event.preventDefault();
+    clearFeedback();
+    showStatus("이 링크는 눌러서 쓰는 것이 아니라 브라우저의 북마크 바로 끌어다 놓는 것입니다.");
+  };
+  bookmarkletLink.addEventListener("click", explainLink);
+  bookmarkletLink.addEventListener("auxclick", explainLink);
+
+  copyBookmarkletButton.addEventListener("click", () => {
+    void copyToClipboard(code);
+  });
+}
+
+/** 북마클릿 코드를 클립보드에 복사한다. 클립보드는 HTTPS(또는 localhost)에서만 쓸 수 있고, 권한이 거부될 수도 있다. */
+async function copyToClipboard(text: string): Promise<void> {
+  clearFeedback();
+  try {
+    await navigator.clipboard.writeText(text);
+    showStatus("복사했습니다. 새 북마크를 만들고 주소 칸에 붙여넣어 주세요.");
+  } catch (cause) {
+    console.error("클립보드 복사 실패:", cause);
+    showMessage("복사하지 못했습니다. 위의 \"링크 저장\" 링크를 북마크 바로 끌어다 놓아 주세요.");
+  }
+}
+
 /**
  * 주소 끝의 #url=...&title=...로 열렸다면(북마클릿) 입력창을 채우고 경고를 보여준다.
  * 자동으로 저장하지는 않는다. 같은 형식의 주소는 누구나 만들어 보낼 수 있어서,
@@ -450,4 +494,5 @@ window.addEventListener("storage", (event) => {
 trashNotice.textContent = `삭제한 링크는 ${TRASH_RETENTION_DAYS}일 동안 보관된 뒤 영구 삭제됩니다.`;
 showMessage(loadStateFromStorage());
 render();
+setUpBookmarklet();
 applyImportFromHash();

@@ -2,19 +2,23 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-
+  ALL_LINKS_FILTER,
   MAX_CATEGORY_NAME_LENGTH,
   addCategory,
   categoryPath,
   checkCategoryName,
   countLinks,
   deleteCategory,
+  filterLinks,
   flattenTree,
+  isSameFilter,
   normalizeCategoryName,
   renameCategory,
-  subtreeIds,
   repairCategories,
+  resolveFilter,
   sanitizeLinkCategories,
+  setLinkCategory,
+  subtreeIds,
 } from "../docs/categories.js";
 
 const cat = (id, parentId = null, name = id) => ({ id, name, parentId, createdAt: "2026-10-12T00:00:00.000Z" });
@@ -309,4 +313,69 @@ test("countLinks: 링크가 없는 카테고리는 0, 없는 카테고리를 가
   assert.equal(counts.byCategory.get("a"), 0);
   assert.equal(counts.uncategorized, 1);
   assert.equal(counts.total, 1);
+});
+
+// ==== 2-C: 걸러보기, 링크의 카테고리 지정 ====
+
+const tree = [cat("dev"), cat("fe", "dev"), cat("react", "fe"), cat("be", "dev"), cat("read")];
+const sample = [linkIn("1", "dev"), linkIn("2", "fe"), linkIn("3", "react"), linkIn("4", "be"), linkIn("5", "read"), linkIn("6", null)];
+const idsOf = (list) => list.map((l) => l.id);
+
+test("filterLinks: 전체는 모든 링크를 순서 그대로 보여준다", () => {
+  assert.deepEqual(idsOf(filterLinks(sample, tree, ALL_LINKS_FILTER)), ["1", "2", "3", "4", "5", "6"]);
+});
+
+test("filterLinks: 미분류는 카테고리가 없는 링크만 보여준다 (없는 카테고리를 가리키는 링크 포함)", () => {
+  assert.deepEqual(idsOf(filterLinks([...sample, linkIn("7", "ghost")], tree, { kind: "uncategorized" })), ["6", "7"]);
+});
+
+test("filterLinks: 카테고리를 고르면 하위 카테고리의 링크까지 보여준다", () => {
+  assert.deepEqual(idsOf(filterLinks(sample, tree, { kind: "category", id: "dev" })), ["1", "2", "3", "4"]);
+  assert.deepEqual(idsOf(filterLinks(sample, tree, { kind: "category", id: "fe" })), ["2", "3"]);
+  assert.deepEqual(idsOf(filterLinks(sample, tree, { kind: "category", id: "react" })), ["3"]);
+  assert.deepEqual(idsOf(filterLinks(sample, tree, { kind: "category", id: "read" })), ["5"]);
+});
+
+test("filterLinks: 링크 수와 필터 결과의 합이 맞는다 (미분류 + 최상위 카테고리들 = 전체)", () => {
+  const total = idsOf(filterLinks(sample, tree, { kind: "uncategorized" })).length
+    + idsOf(filterLinks(sample, tree, { kind: "category", id: "dev" })).length
+    + idsOf(filterLinks(sample, tree, { kind: "category", id: "read" })).length;
+  assert.equal(total, sample.length);
+});
+
+test("filterLinks: 원본은 바뀌지 않는다", () => {
+  const copy = [...sample];
+  filterLinks(sample, tree, { kind: "category", id: "dev" });
+  assert.deepEqual(sample, copy);
+});
+
+test("resolveFilter: 고른 카테고리가 없어졌으면 전체로 되돌린다", () => {
+  assert.deepEqual(resolveFilter({ kind: "category", id: "gone" }, tree), ALL_LINKS_FILTER);
+  assert.deepEqual(resolveFilter({ kind: "category", id: "fe" }, tree), { kind: "category", id: "fe" });
+  assert.deepEqual(resolveFilter({ kind: "uncategorized" }, []), { kind: "uncategorized" });
+});
+
+test("setLinkCategory: 해당 링크의 카테고리만 바꾸고 순서는 그대로다", () => {
+  const next = setLinkCategory(sample, tree, "6", "react");
+  assert.deepEqual(next.map((l) => [l.id, l.categoryId]), [["1", "dev"], ["2", "fe"], ["3", "react"], ["4", "be"], ["5", "read"], ["6", "react"]]);
+});
+
+test("setLinkCategory: null이면 미분류로 옮긴다", () => {
+  assert.equal(setLinkCategory(sample, tree, "1", null)[0].categoryId, null);
+});
+
+test("setLinkCategory: 없는 링크나 없는 카테고리면 undefined, 원본은 바뀌지 않는다", () => {
+  assert.equal(setLinkCategory(sample, tree, "zzz", "dev"), undefined);
+  assert.equal(setLinkCategory(sample, tree, "1", "ghost"), undefined);
+  setLinkCategory(sample, tree, "1", null);
+  assert.equal(sample[0].categoryId, "dev");
+});
+
+test("isSameFilter: 종류가 같고 카테고리면 id까지 같아야 같다", () => {
+  assert.equal(isSameFilter({ kind: "all" }, { kind: "all" }), true);
+  assert.equal(isSameFilter({ kind: "uncategorized" }, { kind: "uncategorized" }), true);
+  assert.equal(isSameFilter({ kind: "category", id: "a" }, { kind: "category", id: "a" }), true);
+  assert.equal(isSameFilter({ kind: "category", id: "a" }, { kind: "category", id: "b" }), false);
+  assert.equal(isSameFilter({ kind: "all" }, { kind: "uncategorized" }), false);
+  assert.equal(isSameFilter({ kind: "category", id: "a" }, { kind: "all" }), false);
 });

@@ -146,3 +146,17 @@ li.seen .link-date {
   flex: 1;
   min-width: 0;
 }
+
+#category-filter {
+  margin: 1rem 0;
+}
+
+#category-filter-list li {
+  padding: 0.1rem 0;
+  border-bottom: none;
+}
+
+#category-filter-list button[aria-current="true"] {
+  font-weight: bold;
+  text-decoration: underline;
+}

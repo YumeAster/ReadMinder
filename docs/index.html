@@ -21,6 +21,9 @@
         <label for="title-input">제목 (선택)</label>
         <input id="title-input" type="text" autocomplete="off" placeholder="비워두면 도메인이 제목이 됩니다" />
 
+        <label for="category-select">카테고리</label>
+        <select id="category-select"></select>
+
         <button id="save-button" type="submit">저장</button>
       </form>
 
@@ -31,6 +34,10 @@
         <span id="duplicate-text"></span>
         <button id="go-to-duplicate" type="button">해당 링크로 이동</button>
       </div>
+
+      <nav id="category-filter" aria-label="카테고리별 보기">
+        <ul id="category-filter-list"></ul>
+      </nav>
 
       <h2>저장한 링크</h2>
       <p id="empty-notice">아직 저장한 링크가 없습니다. 위에 주소를 입력해 저장해 보세요.</p>

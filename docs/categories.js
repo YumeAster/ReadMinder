@@ -251,3 +251,49 @@ export function countLinks(categories, links) {
     }
     return { total: links.length, uncategorized, byCategory };
 }
+export const ALL_LINKS_FILTER = { kind: "all" };
+/**
+ * 보여줄 링크인지 가려내는 함수를 만든다.
+ * 카테고리를 고르면 그 카테고리와 모든 하위 카테고리의 링크가 보인다.
+ */
+export function createFilterMatcher(categories, filter) {
+    switch (filter.kind) {
+        case "all":
+            return () => true;
+        case "uncategorized": {
+            const knownIds = new Set(categories.map((category) => category.id));
+            return (link) => link.categoryId === null || !knownIds.has(link.categoryId);
+        }
+        case "category": {
+            const ids = subtreeIds(categories, filter.id);
+            return (link) => link.categoryId !== null && ids.has(link.categoryId);
+        }
+    }
+}
+export function filterLinks(links, categories, filter) {
+    return links.filter(createFilterMatcher(categories, filter));
+}
+/** 고른 카테고리가 없어졌다면(다른 탭에서 삭제 등) 전체 보기로 되돌린다. */
+export function resolveFilter(filter, categories) {
+    if (filter.kind === "category" && !categories.some((category) => category.id === filter.id)) {
+        return ALL_LINKS_FILTER;
+    }
+    return filter;
+}
+/**
+ * 링크 하나의 카테고리를 바꾼다. categoryId가 null이면 미분류로 옮긴다.
+ * 링크나 카테고리가 없으면 undefined. 목록 순서는 바뀌지 않는다.
+ */
+export function setLinkCategory(links, categories, linkId, categoryId) {
+    if (!links.some((link) => link.id === linkId))
+        return undefined;
+    if (categoryId !== null && !categories.some((category) => category.id === categoryId))
+        return undefined;
+    return links.map((link) => (link.id === linkId ? { ...link, categoryId } : link));
+}
+/** 두 보기 조건이 같은지 */
+export function isSameFilter(a, b) {
+    if (a.kind !== b.kind)
+        return false;
+    return a.kind !== "category" || (b.kind === "category" && a.id === b.id);
+}

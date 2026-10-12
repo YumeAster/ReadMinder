@@ -9,15 +9,22 @@ import {
 import { buildBookmarklet, isLocalAddress } from "./bookmarklet.js";
 import { parseImportHash } from "./import.js";
 import {
+  ALL_LINKS_FILTER,
   addCategory,
   categoryPath,
+  countLinks,
+  createFilterMatcher,
   deleteCategory,
+  filterLinks,
   flattenTree,
+  isSameFilter,
   renameCategory,
   repairCategories,
+  resolveFilter,
   sanitizeLinkCategories,
+  setLinkCategory,
 } from "./categories.js";
-import type { CategoryNode, DeleteCategoryResult } from "./categories.js";
+import type { CategoryFilter, CategoryNode, DeleteCategoryResult } from "./categories.js";
 import {
   isListStorageKey,
   loadCategories,
@@ -42,6 +49,7 @@ function getElement<T extends HTMLElement>(id: string, type: new () => T): T {
 const form = getElement("link-form", HTMLFormElement);
 const urlInput = getElement("url-input", HTMLInputElement);
 const titleInput = getElement("title-input", HTMLInputElement);
+const categorySelect = getElement("category-select", HTMLSelectElement);
 const saveButton = getElement("save-button", HTMLButtonElement);
 const importNotice = getElement("import-notice", HTMLParagraphElement);
 const messageBox = getElement("message", HTMLParagraphElement);
@@ -55,6 +63,7 @@ const trashSummary = getElement("trash-summary", HTMLElement);
 const trashNotice = getElement("trash-notice", HTMLParagraphElement);
 const trashEmptyNotice = getElement("trash-empty", HTMLParagraphElement);
 const trashList = getElement("trash-list", HTMLUListElement);
+const filterList = getElement("category-filter-list", HTMLUListElement);
 const categorySummary = getElement("category-summary", HTMLElement);
 const categoryForm = getElement("category-form", HTMLFormElement);
 const categoryNameInput = getElement("category-name-input", HTMLInputElement);
@@ -75,6 +84,8 @@ const MAX_INDENT_LEVELS = 8;
 let links: readonly SavedLink[] = [];
 /** 카테고리. 최상위부터 하위까지 한 목록에 담고, 상위는 parentId로 가리킨다. 저장소에서 읽어 채운다. */
 let categories: readonly Category[] = [];
+/** 목록에 어떤 링크를 보여줄지. 새로고침하면 전체로 돌아온다 (저장하지 않는다). */
+let filter: CategoryFilter = ALL_LINKS_FILTER;
 /** 삭제한 링크. 가장 최근에 삭제한 항목이 앞에 온다. 보관 기간이 지난 항목은 읽을 때 정리한다. */
 let trash: readonly TrashedLink[] = [];
 /** "해당 링크로 이동" 버튼이 가리키는 항목의 id. 중복 안내가 떠 있을 때만 값이 있다. */
@@ -155,7 +166,21 @@ function createActionButton(action: string, label: string, ariaLabel: string): H
   return button;
 }
 
-function renderItem(link: SavedLink): HTMLLIElement {
+/** 링크의 카테고리를 고르는 선택 상자. 스크린리더가 구분할 수 있도록 ariaLabel에 항목 제목을 넣는다. */
+function createCategorySelect(
+  nodes: readonly CategoryNode[],
+  selectedId: string | null,
+  ariaLabel: string,
+): HTMLSelectElement {
+  const select = document.createElement("select");
+  select.dataset["action"] = "set-category";
+  select.setAttribute("aria-label", ariaLabel);
+  select.append(createOption("", "미분류"), ...nodes.map((node) => createOption(node.category.id, node.path)));
+  select.value = selectedId ?? "";
+  return select;
+}
+
+function renderItem(link: SavedLink, nodes: readonly CategoryNode[]): HTMLLIElement {
   const item = document.createElement("li");
   item.dataset["linkId"] = link.id;
   // 이동 버튼을 눌렀을 때 키보드·스크린리더 사용자도 같은 위치로 옮겨가도록 포커스를 받을 수 있게 한다.
@@ -191,6 +216,7 @@ function renderItem(link: SavedLink): HTMLLIElement {
   const actions = document.createElement("div");
   actions.className = "item-actions";
   actions.append(
+    createCategorySelect(nodes, link.categoryId, `카테고리 변경: ${link.title}`),
     createActionButton("toggle-seen", seenButtonLabel, `${seenButtonLabel}: ${link.title}`),
     createActionButton("delete", "삭제", `삭제: ${link.title}`),
   );
@@ -224,10 +250,61 @@ function renderTrashItem(item: TrashedLink, now: Date): HTMLLIElement {
   return element;
 }
 
+/** 보이는 목록이 비었을 때 보여줄 안내 문구 */
+function describeEmptyList(): string {
+  if (links.length === 0) return "아직 저장한 링크가 없습니다. 위에 주소를 입력해 저장해 보세요.";
+  return filter.kind === "uncategorized" ? "미분류 링크가 없습니다." : "이 카테고리에는 링크가 없습니다.";
+}
+
+function createFilterEntry(
+  entryFilter: CategoryFilter,
+  label: string,
+  count: number,
+  depth: number,
+  fullLabel: string = label,
+): HTMLLIElement {
+  const item = document.createElement("li");
+  item.style.paddingLeft = `${Math.min(depth, MAX_INDENT_LEVELS)}rem`;
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset["filter"] = entryFilter.kind;
+  if (entryFilter.kind === "category") button.dataset["categoryId"] = entryFilter.id;
+  button.textContent = `${label} (${count})`;
+  // 들여쓰기만으로는 상위 카테고리를 알 수 없는 스크린리더 사용자를 위해 경로를 이름으로 쓴다.
+  button.setAttribute("aria-label", `${fullLabel} (${count})`);
+  if (isSameFilter(entryFilter, filter)) button.setAttribute("aria-current", "true");
+
+  item.append(button);
+  return item;
+}
+
+/** "전체 / 미분류 / 각 카테고리" 보기 버튼과 링크 수를 다시 그린다. 카테고리의 수에는 하위 카테고리의 링크도 들어간다. */
+function renderFilterList(nodes: readonly CategoryNode[]): void {
+  const counts = countLinks(categories, links);
+  filterList.replaceChildren(
+    createFilterEntry(ALL_LINKS_FILTER, "전체", counts.total, 0),
+    createFilterEntry({ kind: "uncategorized" }, "미분류", counts.uncategorized, 0),
+    ...nodes.map((node) =>
+      createFilterEntry(
+        { kind: "category", id: node.category.id },
+        node.category.name,
+        counts.byCategory.get(node.category.id) ?? 0,
+        node.depth,
+        node.path,
+      ),
+    ),
+  );
+}
+
 function render(): void {
   const now = new Date();
-  listElement.replaceChildren(...links.map(renderItem));
-  emptyNotice.hidden = links.length > 0;
+  const nodes = flattenTree(categories);
+  const visibleLinks = filterLinks(links, categories, filter);
+  listElement.replaceChildren(...visibleLinks.map((link) => renderItem(link, nodes)));
+  emptyNotice.hidden = visibleLinks.length > 0;
+  emptyNotice.textContent = describeEmptyList();
+  renderFilterList(nodes);
 
   trashList.replaceChildren(...trash.map((item) => renderTrashItem(item, now)));
   trashEmptyNotice.hidden = trash.length > 0;
@@ -338,6 +415,16 @@ function handleToggleSeen(linkId: string): void {
   findLinkItem(linkId)?.querySelector<HTMLButtonElement>('button[data-action="toggle-seen"]')?.focus();
 }
 
+/** 지금 보고 있는 카테고리의 id. 전체나 미분류를 보고 있으면 빈 문자열(미분류)이다. */
+function currentViewCategoryId(): string {
+  return filter.kind === "category" ? filter.id : "";
+}
+
+/** 링크 저장 폼의 카테고리 선택을 지금 보고 있는 카테고리로 맞춘다. 보고 있는 곳에 저장하는 것이 가장 자연스럽다. */
+function setFormCategoryToCurrentView(): void {
+  categorySelect.value = currentViewCategoryId();
+}
+
 function createOption(value: string, label: string): HTMLOptionElement {
   const option = document.createElement("option");
   option.value = value;
@@ -386,6 +473,17 @@ function renderCategoryManager(): void {
     ...nodes.map((node) => createOption(node.category.id, node.path)),
   );
   categoryParentSelect.value = nodes.some((node) => node.category.id === previousParent) ? previousParent : "";
+
+  // 링크 저장 폼의 카테고리 선택지. 입력 중이던 선택은 그 카테고리가 아직 있으면 유지한다.
+  const previousFormCategory = categorySelect.value;
+  categorySelect.replaceChildren(
+    createOption("", "미분류"),
+    ...nodes.map((node) => createOption(node.category.id, node.path)),
+  );
+  categorySelect.value =
+    previousFormCategory === "" || nodes.some((node) => node.category.id === previousFormCategory)
+      ? previousFormCategory
+      : currentViewCategoryId();
 
   categoryList.replaceChildren(...nodes.map(renderCategoryRow));
   categoryEmptyNotice.hidden = nodes.length > 0;
@@ -504,6 +602,7 @@ function handleDeleteCategory(categoryId: string): void {
 
   categories = plan.categories;
   links = plan.links;
+  filter = resolveFilter(filter, categories); // 보고 있던 카테고리가 지워졌다면 전체 보기로 돌아간다.
   render();
   renderCategoryManager();
 
@@ -513,6 +612,58 @@ function handleDeleteCategory(categoryId: string): void {
   ].filter((text) => text !== "");
   showStatus([`"${path}" 카테고리를 삭제했습니다.`, ...details].join(" "));
   categoryNameInput.focus();
+}
+
+/** 안내 문구에 쓸 카테고리 이름. 미분류는 '미분류', 카테고리는 경로로 보여준다. */
+function describeCategory(categoryId: string | null): string {
+  if (categoryId === null) return "'미분류'";
+  return `"${categoryPath(categories, categoryId) ?? "알 수 없는"}" 카테고리`;
+}
+
+function handleSetCategory(linkId: string, value: string): void {
+  clearFeedback();
+
+  const target = links.find((link) => link.id === linkId);
+  const categoryId = value === "" ? null : value;
+  const next = setLinkCategory(links, categories, linkId, categoryId);
+  if (target === undefined || next === undefined) {
+    showMessage("카테고리를 찾지 못했습니다. 다른 곳에서 삭제되었을 수 있습니다.");
+    render(); // 선택 상자를 실제 상태로 되돌린다.
+    return;
+  }
+  if (target.categoryId === categoryId) return;
+
+  const visibleBefore = filterLinks(links, categories, filter);
+  const indexBefore = visibleBefore.findIndex((link) => link.id === linkId);
+
+  const saved = saveLinks(next);
+  if (!saved.ok) {
+    showMessage(saved.message);
+    render(); // 저장되지 않았으니 선택 상자를 원래 값으로 되돌린다.
+    return;
+  }
+
+  links = next;
+  render();
+  showStatus(`"${target.title}" 링크를 ${describeCategory(categoryId)}로 옮겼습니다.`);
+
+  // 아직 목록에 보이면 같은 선택 상자로, 보고 있는 카테고리에서 빠졌다면 다음(없으면 이전) 항목으로 포커스를 옮긴다.
+  const stillVisible = findLinkItem(linkId);
+  if (stillVisible !== null) {
+    stillVisible.querySelector<HTMLSelectElement>('select[data-action="set-category"]')?.focus();
+    return;
+  }
+  const neighbor = visibleBefore[indexBefore + 1] ?? visibleBefore[indexBefore - 1];
+  const neighborItem = neighbor === undefined ? null : findLinkItem(neighbor.id);
+  (neighborItem ?? urlInput).focus();
+}
+
+function changeFilter(next: CategoryFilter): void {
+  filter = next;
+  render();
+  setFormCategoryToCurrentView();
+  // 보기 버튼이 다시 그려지면서 포커스가 사라지므로, 지금 고른 버튼으로 돌려준다.
+  filterList.querySelector<HTMLButtonElement>('button[aria-current="true"]')?.focus();
 }
 
 function handleRestore(linkId: string): void {
@@ -558,6 +709,31 @@ listElement.addEventListener("click", (event) => {
   const clicked = readActionClick(event, "linkId");
   if (clicked?.action === "delete") handleDelete(clicked.id);
   if (clicked?.action === "toggle-seen") handleToggleSeen(clicked.id);
+});
+
+// 항목의 카테고리 선택 상자를 바꿨을 때
+listElement.addEventListener("change", (event) => {
+  if (!(event.target instanceof HTMLSelectElement) || event.target.dataset["action"] !== "set-category") return;
+  const linkId = event.target.closest("li")?.dataset["linkId"];
+  if (linkId !== undefined) handleSetCategory(linkId, event.target.value);
+});
+
+// "전체 / 미분류 / 카테고리" 보기 버튼
+filterList.addEventListener("click", (event) => {
+  if (!(event.target instanceof Element)) return;
+  const button = event.target.closest<HTMLButtonElement>("button[data-filter]");
+  if (button === null) return;
+
+  const kind = button.dataset["filter"];
+  const categoryId = button.dataset["categoryId"];
+  let next: CategoryFilter | null = null;
+  if (kind === "all") next = ALL_LINKS_FILTER;
+  else if (kind === "uncategorized") next = { kind: "uncategorized" };
+  else if (kind === "category" && categoryId !== undefined) next = { kind: "category", id: categoryId };
+  if (next === null) return;
+
+  clearFeedback();
+  changeFilter(next);
 });
 
 trashList.addEventListener("click", (event) => {
@@ -609,13 +785,18 @@ form.addEventListener("submit", (event) => {
     return;
   }
 
+  // 선택 상자에 있던 카테고리가 그사이 지워졌다면 미분류로 저장한다.
+  const selectedCategoryId = categories.some((category) => category.id === categorySelect.value)
+    ? categorySelect.value
+    : null;
+
   const newLink: SavedLink = {
     id: crypto.randomUUID(),
     url: parsed.value.href,
     title: titleInput.value.trim() || defaultTitleFor(parsed.value),
     createdAt: new Date().toISOString(),
     seen: false,
-    categoryId: null,
+    categoryId: selectedCategoryId,
   };
 
   // 저장에 성공한 뒤에만 화면 상태를 바꿔, 화면과 저장소가 어긋나지 않게 한다.
@@ -629,14 +810,22 @@ form.addEventListener("submit", (event) => {
   links = nextLinks;
   render();
   form.reset();
+  setFormCategoryToCurrentView();
   showMessage("");
   importNotice.hidden = true;
   urlInput.focus();
 
+  const notes: string[] = [];
   if (importHintPending) {
     importHintPending = false;
-    showStatus("저장했습니다. 브라우저의 뒤로 가기로 읽던 페이지로 돌아갈 수 있습니다.");
+    notes.push("저장했습니다. 브라우저의 뒤로 가기로 읽던 페이지로 돌아갈 수 있습니다.");
   }
+  if (!createFilterMatcher(categories, filter)(newLink)) {
+    // 지금 보고 있는 목록에 새 링크가 안 보이면, 어디에 저장되었는지 알려준다.
+    const where = describeCategory(selectedCategoryId);
+    notes.push(`"${newLink.title}" 링크를 ${where}에 저장했습니다. 지금 보고 있는 목록에는 나타나지 않습니다.`);
+  }
+  if (notes.length > 0) showStatus(notes.join(" "));
 });
 
 /** 이 앱이 열려 있는 주소로 북마클릿을 만들어 설치 영역에 연결한다. */
@@ -723,6 +912,8 @@ window.addEventListener("storage", (event) => {
   const categoriesBefore = JSON.stringify(categories);
   const warning = loadStateFromStorage();
   if (warning !== "") showMessage(warning);
+
+  filter = resolveFilter(filter, categories); // 보고 있던 카테고리가 다른 탭에서 지워졌다면 전체 보기로 돌아간다.
 
   // 다른 탭에서 지워져 이동할 대상이 사라졌다면 중복 안내를 닫는다.
   if (duplicateTargetId !== null && !links.some((link) => link.id === duplicateTargetId)) {

@@ -1,7 +1,7 @@
 // 빌드된 docs/storage.js의 데이터 검사 함수를 확인한다. 실행: npm test
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseLinks, parseTrash } from "../docs/storage.js";
+import { isListStorageKey, parseLinks, parseTrash } from "../docs/storage.js";
 
 const base = { id: "a", url: "https://example.com/", title: "예시", createdAt: "2026-10-12T00:00:00.000Z" };
 
@@ -63,4 +63,13 @@ test("휴지통: deletedAt이 없거나 날짜가 아니면 깨진 데이터로 
 test("휴지통: 빈 배열은 정상, JSON이 아니면 깨진 데이터", () => {
   assert.deepEqual(parseTrash("[]"), []);
   assert.equal(parseTrash("{깨진"), null);
+});
+
+// ---- 다른 탭 변경 감지 ----
+test("storage 이벤트 키: links, trash, 전체 삭제(null)만 관련 있다", () => {
+  assert.equal(isListStorageKey("links"), true);
+  assert.equal(isListStorageKey("trash"), true);
+  assert.equal(isListStorageKey(null), true);
+  assert.equal(isListStorageKey("links.corrupt-backup"), false);
+  assert.equal(isListStorageKey("other"), false);
 });

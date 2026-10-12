@@ -1,5 +1,5 @@
 import { TRASH_RETENTION_DAYS, cleanUpTrash, daysUntilPurge, moveToTrash, restoreFromTrash, toggleSeen, } from "./links.js";
-import { loadLinks, loadTrash, saveLinks, saveTrash } from "./storage.js";
+import { isListStorageKey, loadLinks, loadTrash, saveLinks, saveTrash } from "./storage.js";
 import { defaultTitleFor, findLinkByUrl, parseUserUrl } from "./url.js";
 /** id로 요소를 찾고, 없거나 타입이 다르면 원인을 알 수 있게 에러를 던진다. */
 function getElement(id, type) {
@@ -25,15 +25,30 @@ const trashEmptyNotice = getElement("trash-empty", HTMLParagraphElement);
 const trashList = getElement("trash-list", HTMLUListElement);
 /** 이동한 항목을 강조해 두는 시간. 눈으로 위치를 찾기에 충분한 정도로 잡았다. */
 const HIGHLIGHT_MS = 2000;
-const initial = loadLinks();
-const initialTrash = loadTrash();
-/** 최신 항목이 앞에 오는 순서로 유지한다. */
-let links = initial.items;
+/** 최신 항목이 앞에 오는 순서로 유지한다. 저장소에서 읽어 채운다 (loadStateFromStorage). */
+let links = [];
 /** 삭제한 링크. 가장 최근에 삭제한 항목이 앞에 온다. 보관 기간이 지난 항목은 읽을 때 정리한다. */
-let trash = cleanUpTrash(links, initialTrash.items, new Date());
+let trash = [];
 /** "해당 링크로 이동" 버튼이 가리키는 항목의 id. 중복 안내가 떠 있을 때만 값이 있다. */
 let duplicateTargetId = null;
 let highlightTimer;
+/**
+ * 저장소에서 링크와 휴지통을 읽어 화면 상태로 삼는다. 보관 기간이 지난 휴지통 항목은 이때 정리한다.
+ * 읽지 못한 데이터가 있으면 화면에 보여줄 안내 문구를 돌려준다 (없으면 빈 문자열).
+ */
+function loadStateFromStorage() {
+    const loadedLinks = loadLinks();
+    const loadedTrash = loadTrash();
+    links = loadedLinks.items;
+    trash = cleanUpTrash(links, loadedTrash.items, new Date());
+    // 정리된 항목이 있으면 저장소에도 반영한다.
+    // 저장에 실패해도 화면에는 보이지 않고 다음에 다시 정리되므로, saveTrash가 남기는 로그 외에는 따로 알리지 않는다.
+    if (trash.length !== loadedTrash.items.length)
+        saveTrash(trash);
+    return [loadedLinks.warning, loadedTrash.warning]
+        .filter((warning) => warning !== null)
+        .join(" ");
+}
 /** 오류·경고 문구 (빨간색) */
 function showMessage(text) {
     messageBox.textContent = text;
@@ -299,10 +314,22 @@ form.addEventListener("submit", (event) => {
     showMessage("");
     urlInput.focus();
 });
-// 보관 기간이 지나 정리된 항목이 있으면 저장소에도 반영한다.
-// 저장에 실패해도 화면에는 보이지 않고 다음에 다시 정리되므로, saveTrash가 남기는 로그 외에는 따로 알리지 않는다.
-if (trash.length !== initialTrash.items.length)
-    saveTrash(trash);
+// 다른 탭에서 링크나 휴지통이 바뀌면 저장소를 다시 읽는다. 그러지 않으면 이 탭이 옛 목록을 들고 있다가
+// 삭제·표시 변경 때 목록 전체를 다시 저장하면서, 다른 탭에서 추가한 링크를 덮어써 잃게 된다.
+// (이 이벤트는 바꾼 탭 자신에게는 오지 않는다.)
+window.addEventListener("storage", (event) => {
+    if (!isListStorageKey(event.key))
+        return;
+    const warning = loadStateFromStorage();
+    if (warning !== "")
+        showMessage(warning);
+    // 다른 탭에서 지워져 이동할 대상이 사라졌다면 중복 안내를 닫는다.
+    if (duplicateTargetId !== null && !links.some((link) => link.id === duplicateTargetId)) {
+        hideDuplicateNotice();
+    }
+    render();
+    showStatus("다른 탭에서 바뀐 내용을 반영했습니다.");
+});
 trashNotice.textContent = `삭제한 링크는 ${TRASH_RETENTION_DAYS}일 동안 보관된 뒤 영구 삭제됩니다.`;
-showMessage([initial.warning, initialTrash.warning].filter((warning) => warning !== null).join(" "));
+showMessage(loadStateFromStorage());
 render();

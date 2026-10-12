@@ -134,6 +134,14 @@ function saveList(key: string, items: readonly unknown[]): Result<null> {
   }
 }
 
+/**
+ * storage 이벤트(다른 탭에서 저장소가 바뀌었다는 알림)가 링크 목록이나 휴지통과 관련 있는지.
+ * key가 null이면 저장소 전체가 비워진 것이므로 관련 있는 것으로 본다.
+ */
+export function isListStorageKey(key: string | null): boolean {
+  return key === null || key === LINKS_KEY || key === TRASH_KEY;
+}
+
 export function loadLinks(): LoadOutcome<SavedLink> {
   return loadList(LINKS_KEY, "저장된 링크 데이터", parseLinks);
 }

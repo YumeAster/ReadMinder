@@ -21,8 +21,9 @@ export function moveToTrash(links, trash, linkId, now) {
 /**
  * 휴지통의 링크를 목록으로 되돌린다. 원래 저장 시각(createdAt) 순서 자리에 들어간다.
  * 같은 주소의 링크가 이미 목록에 있으면 중복이 생기므로 복구하지 않는다.
+ * 속해 있던 카테고리가 그사이 삭제되었다면(categoryIds에 없다면) 미분류로 복구한다.
  */
-export function restoreFromTrash(links, trash, linkId) {
+export function restoreFromTrash(links, trash, linkId, categoryIds) {
     const target = trash.find((item) => item.id === linkId);
     if (target === undefined)
         return { ok: false, reason: "not-found" };
@@ -35,6 +36,7 @@ export function restoreFromTrash(links, trash, linkId) {
         title: target.title,
         createdAt: target.createdAt,
         seen: target.seen,
+        categoryId: target.categoryId !== null && categoryIds.has(target.categoryId) ? target.categoryId : null,
     };
     const restoredLinks = [...links, restored].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return {

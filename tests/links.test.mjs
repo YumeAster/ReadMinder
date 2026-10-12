@@ -12,10 +12,11 @@ import {
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = new Date("2026-10-12T12:00:00.000Z");
+const NO_CATEGORIES = new Set();
 const ago = (ms) => new Date(NOW.getTime() - ms).toISOString();
 
 function link(id, createdAt, extra = {}) {
-  return { id, url: `https://${id}.example.com/`, title: id, createdAt, seen: false, ...extra };
+  return { id, url: `https://${id}.example.com/`, title: id, createdAt, seen: false, categoryId: null, ...extra };
 }
 function trashedLink(id, deletedAt, extra = {}) {
   return { ...link(id, "2026-10-01T00:00:00.000Z"), deletedAt, ...extra };
@@ -51,7 +52,7 @@ test("moveToTrash: 없는 id면 undefined, 원본 배열은 바뀌지 않는다"
 });
 
 test("restoreFromTrash: 원래 저장 시각 순서 자리로 돌아가고 deletedAt은 떨어진다", () => {
-  const result = restoreFromTrash([a, c], [trashedLink("b", ago(DAY), { createdAt: b.createdAt })], "b");
+  const result = restoreFromTrash([a, c], [trashedLink("b", ago(DAY), { createdAt: b.createdAt })], "b", NO_CATEGORIES);
   assert.equal(result.ok, true);
   assert.deepEqual(result.links.map((l) => l.id), ["a", "b", "c"]);
   assert.deepEqual(result.trash, []);
@@ -60,17 +61,17 @@ test("restoreFromTrash: 원래 저장 시각 순서 자리로 돌아가고 delet
 });
 
 test("restoreFromTrash: seen 상태를 유지한다", () => {
-  const result = restoreFromTrash([], [trashedLink("s", ago(DAY), { seen: true })], "s");
+  const result = restoreFromTrash([], [trashedLink("s", ago(DAY), { seen: true })], "s", NO_CATEGORIES);
   assert.equal(result.restored.seen, true);
 });
 
 test("restoreFromTrash: 같은 주소가 이미 목록에 있으면 복구하지 않는다", () => {
   const sameUrl = trashedLink("x", ago(DAY), { url: a.url });
-  assert.deepEqual(restoreFromTrash([a], [sameUrl], "x"), { ok: false, reason: "duplicate" });
+  assert.deepEqual(restoreFromTrash([a], [sameUrl], "x", NO_CATEGORIES), { ok: false, reason: "duplicate" });
 });
 
 test("restoreFromTrash: 휴지통에 없는 id는 not-found", () => {
-  assert.deepEqual(restoreFromTrash([a], [], "zzz"), { ok: false, reason: "not-found" });
+  assert.deepEqual(restoreFromTrash([a], [], "zzz", NO_CATEGORIES), { ok: false, reason: "not-found" });
 });
 
 test("cleanUpTrash: 7일이 지난 항목만 지운다 (정확히 7일은 지운다)", () => {
@@ -112,4 +113,28 @@ test("toggleSeen: 원본 배열과 항목은 바뀌지 않는다", () => {
 
 test("toggleSeen: 없는 id면 undefined", () => {
   assert.equal(toggleSeen([a], "zzz"), undefined);
+});
+
+// ---- 카테고리와 휴지통 복구 ----
+test("restoreFromTrash: 속해 있던 카테고리가 아직 있으면 그대로 복구한다", () => {
+  const item = trashedLink("k", ago(DAY), { categoryId: "cat1" });
+  const result = restoreFromTrash([], [item], "k", new Set(["cat1", "cat2"]));
+  assert.equal(result.restored.categoryId, "cat1");
+});
+
+test("restoreFromTrash: 카테고리가 그사이 삭제되었다면 미분류로 복구한다", () => {
+  const item = trashedLink("k", ago(DAY), { categoryId: "gone" });
+  const result = restoreFromTrash([], [item], "k", new Set(["cat1"]));
+  assert.equal(result.ok, true);
+  assert.equal(result.restored.categoryId, null);
+});
+
+test("restoreFromTrash: 미분류였던 링크는 미분류로 복구한다", () => {
+  const result = restoreFromTrash([], [trashedLink("k", ago(DAY))], "k", new Set(["cat1"]));
+  assert.equal(result.restored.categoryId, null);
+});
+
+test("moveToTrash: categoryId를 그대로 가져간다", () => {
+  const inCategory = link("k", "2026-10-01T00:00:00.000Z", { categoryId: "cat1" });
+  assert.equal(moveToTrash([inCategory], [], "k", NOW).trash[0].categoryId, "cat1");
 });

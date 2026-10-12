@@ -1,6 +1,8 @@
-import type { Result, SavedLink, TrashedLink } from "./types.js";
+import type { Category, Result, SavedLink, TrashedLink } from "./types.js";
 
 const LINKS_KEY = "links";
+/** 카테고리를 보관하는 키. 링크 목록과 분리해 둔다 */
+const CATEGORIES_KEY = "categories";
 /** 삭제한 링크를 보관하는 키. 링크 목록과 분리해 둔다 */
 const TRASH_KEY = "trash";
 /** 깨진 데이터를 덮어쓰기 전에 원본을 보관해 두는 키의 꼬리말 (예: "links.corrupt-backup") */
@@ -13,7 +15,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /** 저장된 값 하나를 링크로 바꾼다. 모양이 틀리면 null. */
 function toSavedLink(value: unknown): SavedLink | null {
   if (!isRecord(value)) return null;
-  const { id, url, title, createdAt, seen } = value;
+  const { id, url, title, createdAt, seen, categoryId } = value;
   if (
     typeof id !== "string" ||
     typeof url !== "string" ||
@@ -30,7 +32,30 @@ function toSavedLink(value: unknown): SavedLink | null {
     if (typeof seen !== "boolean") return null;
     seenValue = seen;
   }
-  return { id, url, title, createdAt, seen: seenValue };
+
+  // categoryId가 없는 것은 카테고리 기능 이전에 저장된 정상 데이터이므로 null(미분류)로 본다.
+  // 있는데 문자열도 null도 아니면 깨진 데이터다.
+  let categoryIdValue: string | null = null;
+  if (categoryId !== undefined && categoryId !== null) {
+    if (typeof categoryId !== "string") return null;
+    categoryIdValue = categoryId;
+  }
+  return { id, url, title, createdAt, seen: seenValue, categoryId: categoryIdValue };
+}
+
+/** 저장된 값 하나를 카테고리로 바꾼다. 모양이 틀리면 null. */
+function toCategory(value: unknown): Category | null {
+  if (!isRecord(value)) return null;
+  const { id, name, parentId, createdAt } = value;
+  if (typeof id !== "string" || typeof name !== "string" || typeof createdAt !== "string") return null;
+
+  // 최상위는 parentId가 null이다. 값이 아예 없거나 다른 타입이면 깨진 데이터로 본다.
+  let parentIdValue: string | null = null;
+  if (parentId !== null) {
+    if (typeof parentId !== "string") return null;
+    parentIdValue = parentId;
+  }
+  return { id, name, parentId: parentIdValue, createdAt };
 }
 
 /** 저장된 값 하나를 휴지통 링크로 바꾼다. 삭제 시각이 없거나 날짜가 아니면 null. */
@@ -73,6 +98,11 @@ function parseList<T>(raw: string, convert: (value: unknown) => T | null): T[] |
 /** 저장된 JSON 문자열을 링크 목록으로 읽는다. 읽을 수 없으면 null. */
 export function parseLinks(raw: string): SavedLink[] | null {
   return parseList(raw, toSavedLink);
+}
+
+/** 저장된 JSON 문자열을 카테고리 목록으로 읽는다. 읽을 수 없으면 null. */
+export function parseCategories(raw: string): Category[] | null {
+  return parseList(raw, toCategory);
 }
 
 /** 저장된 JSON 문자열을 휴지통 목록으로 읽는다. 읽을 수 없으면 null. */
@@ -139,7 +169,7 @@ function saveList(key: string, items: readonly unknown[]): Result<null> {
  * key가 null이면 저장소 전체가 비워진 것이므로 관련 있는 것으로 본다.
  */
 export function isListStorageKey(key: string | null): boolean {
-  return key === null || key === LINKS_KEY || key === TRASH_KEY;
+  return key === null || key === LINKS_KEY || key === TRASH_KEY || key === CATEGORIES_KEY;
 }
 
 export function loadLinks(): LoadOutcome<SavedLink> {
@@ -148,6 +178,14 @@ export function loadLinks(): LoadOutcome<SavedLink> {
 
 export function saveLinks(links: readonly SavedLink[]): Result<null> {
   return saveList(LINKS_KEY, links);
+}
+
+export function loadCategories(): LoadOutcome<Category> {
+  return loadList(CATEGORIES_KEY, "카테고리 데이터", parseCategories);
+}
+
+export function saveCategories(categories: readonly Category[]): Result<null> {
+  return saveList(CATEGORIES_KEY, categories);
 }
 
 export function loadTrash(): LoadOutcome<TrashedLink> {

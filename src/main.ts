@@ -8,8 +8,17 @@ import {
 } from "./links.js";
 import { buildBookmarklet, isLocalAddress } from "./bookmarklet.js";
 import { parseImportHash } from "./import.js";
-import { isListStorageKey, loadLinks, loadTrash, saveLinks, saveTrash } from "./storage.js";
-import type { Result, SavedLink, TrashedLink } from "./types.js";
+import { repairCategories, sanitizeLinkCategories } from "./categories.js";
+import {
+  isListStorageKey,
+  loadCategories,
+  loadLinks,
+  loadTrash,
+  saveCategories,
+  saveLinks,
+  saveTrash,
+} from "./storage.js";
+import type { Category, Result, SavedLink, TrashedLink } from "./types.js";
 import { defaultTitleFor, findLinkByUrl, parseUserUrl } from "./url.js";
 
 /** id로 요소를 찾고, 없거나 타입이 다르면 원인을 알 수 있게 에러를 던진다. */
@@ -47,6 +56,8 @@ const HIGHLIGHT_MS = 2000;
 
 /** 최신 항목이 앞에 오는 순서로 유지한다. 저장소에서 읽어 채운다 (loadStateFromStorage). */
 let links: readonly SavedLink[] = [];
+/** 카테고리. 최상위부터 하위까지 한 목록에 담고, 상위는 parentId로 가리킨다. 저장소에서 읽어 채운다. */
+let categories: readonly Category[] = [];
 /** 삭제한 링크. 가장 최근에 삭제한 항목이 앞에 온다. 보관 기간이 지난 항목은 읽을 때 정리한다. */
 let trash: readonly TrashedLink[] = [];
 /** "해당 링크로 이동" 버튼이 가리키는 항목의 id. 중복 안내가 떠 있을 때만 값이 있다. */
@@ -60,16 +71,27 @@ let importHintPending = false;
  * 읽지 못한 데이터가 있으면 화면에 보여줄 안내 문구를 돌려준다 (없으면 빈 문자열).
  */
 function loadStateFromStorage(): string {
+  // 링크를 카테고리보다 먼저 읽는다. 다른 탭은 카테고리를 먼저 저장하고 링크를 나중에 저장하므로,
+  // 이 순서로 읽으면 "링크는 새로운데 카테고리는 옛것"인 어긋남을 피할 수 있다.
   const loadedLinks = loadLinks();
+  const loadedCategories = loadCategories();
   const loadedTrash = loadTrash();
-  links = loadedLinks.items;
+
+  // 저장된 카테고리 중 없는 부모를 가리키거나 서로를 부모로 삼는 것은 최상위로 올려 바로잡는다 (사라지게 하지 않는다).
+  categories = repairCategories(loadedCategories.items);
+  if (categories.length !== loadedCategories.items.length || categories.some((c, i) => c !== loadedCategories.items[i])) {
+    saveCategories(categories);
+  }
+
+  // 없는 카테고리를 가리키는 링크는 미분류로 본다. 저장소는 다음에 저장할 때 바로잡힌다.
+  links = sanitizeLinkCategories(loadedLinks.items, categories);
   trash = cleanUpTrash(links, loadedTrash.items, new Date());
 
   // 정리된 항목이 있으면 저장소에도 반영한다.
   // 저장에 실패해도 화면에는 보이지 않고 다음에 다시 정리되므로, saveTrash가 남기는 로그 외에는 따로 알리지 않는다.
   if (trash.length !== loadedTrash.items.length) saveTrash(trash);
 
-  return [loadedLinks.warning, loadedTrash.warning]
+  return [loadedLinks.warning, loadedCategories.warning, loadedTrash.warning]
     .filter((warning): warning is string => warning !== null)
     .join(" ");
 }
@@ -302,7 +324,7 @@ function handleToggleSeen(linkId: string): void {
 function handleRestore(linkId: string): void {
   clearFeedback();
 
-  const result = restoreFromTrash(links, trash, linkId);
+  const result = restoreFromTrash(links, trash, linkId, new Set(categories.map((category) => category.id)));
   if (!result.ok) {
     showMessage(
       result.reason === "duplicate"
@@ -376,6 +398,7 @@ form.addEventListener("submit", (event) => {
     title: titleInput.value.trim() || defaultTitleFor(parsed.value),
     createdAt: new Date().toISOString(),
     seen: false,
+    categoryId: null,
   };
 
   // 저장에 성공한 뒤에만 화면 상태를 바꿔, 화면과 저장소가 어긋나지 않게 한다.

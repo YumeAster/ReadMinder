@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "test": "tsc && node --test tests/url.test.mjs"
+    "test": "tsc && node --test \"tests/*.test.mjs\""
   },
   "devDependencies": {
     "typescript": "^7.0.2"

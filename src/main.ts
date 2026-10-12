@@ -26,7 +26,7 @@ const HIGHLIGHT_MS = 2000;
 
 const initial = loadLinks();
 /** 최신 항목이 앞에 오는 순서로 유지한다. */
-let links: readonly SavedLink[] = initial.links;
+let links: readonly SavedLink[] = initial.items;
 /** "해당 링크로 이동" 버튼이 가리키는 항목의 id. 중복 안내가 떠 있을 때만 값이 있다. */
 let duplicateTargetId: string | null = null;
 let highlightTimer: number | undefined;
@@ -127,6 +127,7 @@ form.addEventListener("submit", (event) => {
     url: parsed.value.href,
     title: titleInput.value.trim() || defaultTitleFor(parsed.value),
     createdAt: new Date().toISOString(),
+    seen: false,
   };
 
   // 저장에 성공한 뒤에만 화면 상태를 바꿔, 화면과 저장소가 어긋나지 않게 한다.

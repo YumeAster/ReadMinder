@@ -8,6 +8,8 @@ export interface SavedLink {
   readonly title: string;
   /** 저장 시각 (ISO 8601 문자열) */
   readonly createdAt: string;
+  /** "이미 본 링크"로 표시했는지. 1-C 이전에 저장된 데이터에는 없어서, 읽을 때 false로 채운다 */
+  readonly seen: boolean;
 }
 
 /** 실패할 수 있는 작업의 결과. 에러를 던지지 않고 값으로 돌려준다. */

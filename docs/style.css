@@ -1,162 +1,834 @@
-/* 1단계는 기능 확인용 최소 스타일. 디자인은 기능 완성 후 한 번에 처리한다. */
+/*
+ * ReadMinder 화면 디자인.
+ * 바탕은 Pico CSS(vendor/pico.min.css)이고, 그 위에 색·글꼴·배치를 덧씌운다.
+ * Pico를 CSS 레이어에 넣었으므로 이 파일의 규칙은 선택자가 단순해도 항상 Pico보다 우선한다.
+ */
+@import url("vendor/pico.min.css") layer(pico);
+@import url("vendor/pretendard/pretendardvariable-dynamic-subset.css");
+
+/* ===== 색과 값 ===== */
+html:root {
+  --rm-paper: #f2f4f7;
+  --rm-surface: #ffffff;
+  --rm-field: #f7f8fa;
+  --rm-ink: #161b26;
+  --rm-ink-hover: #2b3345;
+  --rm-ink-2: #566074;
+  --rm-rule: #dde2ea;
+  --rm-rule-strong: #c3cbd8;
+  /* 입력칸·선택 상자·버튼의 테두리. 배경과 3:1 이상이어야 경계가 보인다 (그래서 구분선보다 진하다) */
+  --rm-control-border: #808a9c;
+  --rm-hover: #e9edf3;
+  --rm-focus: #2f6fde;
+  --rm-focus-ring: rgba(47, 111, 222, 0.28);
+  --rm-danger: #b3261e;
+  --rm-danger-bg: #fdecea;
+  --rm-ok: #1b6e3c;
+  --rm-ok-bg: #e8f5ec;
+  --rm-warn: #8a5a00;
+  --rm-warn-bg: #fff4db;
+  --rm-flash: #fff1b8;
+
+  /* 책갈피 리본 색. 최상위 카테고리 순서대로 돌려 쓴다 (main.ts의 RIBBON_COLOR_COUNT와 개수를 맞춘다). */
+  --rm-ribbon-0: #2f6fde;
+  --rm-ribbon-1: #0e8f6b;
+  --rm-ribbon-2: #c9540a;
+  --rm-ribbon-3: #8a3fd1;
+  --rm-ribbon-4: #d13f6b;
+  --rm-ribbon-5: #a67c00;
+  --rm-ribbon-6: #168aa3;
+  --rm-ribbon-7: #5c6b7a;
+  --rm-ribbon-none: #808a9c;
+
+  --rm-radius-field: 8px;
+  --rm-radius-panel: 16px;
+
+  /* Pico가 쓰는 변수에 연결한다 */
+  --pico-font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui,
+    "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+  --pico-font-size: 100%;
+  --pico-line-height: 1.6;
+  --pico-background-color: var(--rm-paper);
+  --pico-color: var(--rm-ink);
+  --pico-muted-color: var(--rm-ink-2);
+  --pico-muted-border-color: var(--rm-rule);
+  --pico-primary: var(--rm-focus);
+  --pico-form-element-focus-color: var(--rm-focus-ring);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:root {
+    --rm-paper: #0e121a;
+    --rm-surface: #161b26;
+    --rm-field: #0e121a;
+    --rm-ink: #e6eaf2;
+    --rm-ink-hover: #ffffff;
+    --rm-ink-2: #9ba5b8;
+    --rm-rule: #262d3b;
+    --rm-rule-strong: #394255;
+    --rm-control-border: #667187;
+    --rm-hover: #1e2532;
+    --rm-focus: #6c9bff;
+    --rm-focus-ring: rgba(108, 155, 255, 0.35);
+    --rm-danger: #ff8f86;
+    --rm-danger-bg: #3a1c1a;
+    --rm-ok: #7bd59a;
+    --rm-ok-bg: #17301f;
+    --rm-warn: #f2c36b;
+    --rm-warn-bg: #3a2f10;
+    --rm-flash: #4b4210;
+
+    --rm-ribbon-0: #5b90f0;
+    --rm-ribbon-1: #34b68c;
+    --rm-ribbon-2: #ee7b3a;
+    --rm-ribbon-3: #b07af0;
+    --rm-ribbon-4: #ec6a93;
+    --rm-ribbon-5: #d7a92a;
+    --rm-ribbon-6: #3cb6d0;
+    --rm-ribbon-7: #8493a5;
+    --rm-ribbon-none: #667187;
+  }
+}
+
+/* 리본·폴더 아이콘이 쓸 색을 항목의 data-ribbon 값으로 정한다 */
+[data-ribbon="0"] { --ribbon: var(--rm-ribbon-0); }
+[data-ribbon="1"] { --ribbon: var(--rm-ribbon-1); }
+[data-ribbon="2"] { --ribbon: var(--rm-ribbon-2); }
+[data-ribbon="3"] { --ribbon: var(--rm-ribbon-3); }
+[data-ribbon="4"] { --ribbon: var(--rm-ribbon-4); }
+[data-ribbon="5"] { --ribbon: var(--rm-ribbon-5); }
+[data-ribbon="6"] { --ribbon: var(--rm-ribbon-6); }
+[data-ribbon="7"] { --ribbon: var(--rm-ribbon-7); }
+[data-ribbon="none"] { --ribbon: var(--rm-ribbon-none); }
+
+/* ===== 기본 ===== */
 body {
-  font-family: sans-serif;
-  line-height: 1.5;
   margin: 0;
+  /* 한국어는 단어 단위로 줄을 바꾸고, 띄어쓰기 없는 긴 주소는 어디서든 끊는다 */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
-main {
-  max-width: 40rem;
-  margin: 0 auto;
-  padding: 1rem;
+.icon {
+  flex: none;
+  width: 1.1em;
+  height: 1.1em;
 }
 
-form {
+.icon-slot {
+  display: inline-flex;
+  align-items: center;
+}
+
+:where(button, select, input, a, summary, li[tabindex]):focus-visible {
+  outline: 2px solid var(--rm-focus);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+/* ===== 전체 배치 ===== */
+.app {
   display: grid;
-  gap: 0.5rem;
+  max-width: 66rem;
+  margin: 0 auto;
+  padding: 1.75rem 1.25rem 5rem;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "header" "capture" "shelf" "list" "tools";
+  gap: 1.5rem 2.5rem;
 }
 
-input {
-  font: inherit;
-  padding: 0.4rem;
+.app-header { grid-area: header; }
+.capture { grid-area: capture; }
+.shelf { grid-area: shelf; }
+.reading-list { grid-area: list; }
+.tools { grid-area: tools; }
+
+@media (min-width: 60rem) {
+  .app {
+    grid-template-columns: 17rem minmax(0, 1fr);
+    grid-template-areas:
+      "header header"
+      "shelf capture"
+      "shelf list"
+      "shelf tools";
+    align-items: start;
+  }
+
+  .shelf {
+    position: sticky;
+    top: 1.25rem;
+    max-height: calc(100vh - 2.5rem);
+    overflow-y: auto;
+  }
+
+  .capture,
+  .reading-list,
+  .tools {
+    max-width: 46rem;
+  }
+}
+
+/* ===== 머리말 ===== */
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 1rem;
+}
+
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+}
+
+/* 앱의 표시이자 목록 항목의 책갈피와 같은 모양 */
+.mark {
+  width: 1rem;
+  height: 1.7rem;
+  background: var(--rm-focus);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 76%, 0 100%);
+}
+
+.tagline {
+  margin: 0;
+  color: var(--rm-ink-2);
+  font-size: 0.9375rem;
+}
+
+/* ===== 폼 공통 ===== */
+.field label {
+  display: block;
+  margin: 0 0 0.35rem;
+  color: var(--rm-ink-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+input:not([type="checkbox"], [type="radio"]),
+select {
+  height: auto;
+  margin: 0;
+  border: 1px solid var(--rm-control-border);
+  border-radius: var(--rm-radius-field);
+  background-color: var(--rm-field);
+  color: var(--rm-ink);
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+input:not([type="checkbox"], [type="radio"])::placeholder {
+  color: var(--rm-ink-2);
+  opacity: 0.8;
+}
+
+input:not([type="checkbox"], [type="radio"]):focus,
+select:focus {
+  border-color: var(--rm-focus);
+  box-shadow: 0 0 0 3px var(--rm-focus-ring);
 }
 
 button {
-  font: inherit;
-  padding: 0.5rem;
+  margin: 0;
+  box-shadow: none;
+  font-family: inherit;
 }
 
-#message {
-  color: #b00020;
-  min-height: 1.5em;
-}
-
-#status {
-  color: #1b5e20;
-  min-height: 1.5em;
-}
-
-#import-notice {
-  padding: 0.5rem;
-  border: 1px solid #b26a00;
-}
-
-#duplicate-notice {
-  padding: 0.5rem;
-  border: 1px solid #b00020;
-  display: flex;
-  gap: 0.5rem;
+/* 으뜸 버튼: 잉크색으로 채운다 */
+#save-button,
+#category-form button[type="submit"] {
+  display: inline-flex;
   align-items: center;
-  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  width: auto;
+  padding: 0.75rem 1.3rem;
+  border: 1px solid var(--rm-ink);
+  border-radius: var(--rm-radius-field);
+  background: var(--rm-ink);
+  color: var(--rm-surface);
+  font-size: 1rem;
+  font-weight: 700;
 }
 
-#duplicate-notice[hidden] {
-  display: none;
+#save-button:hover,
+#save-button:focus,
+#save-button:active,
+#category-form button[type="submit"]:hover,
+#category-form button[type="submit"]:focus,
+#category-form button[type="submit"]:active {
+  border-color: var(--rm-ink-hover);
+  background: var(--rm-ink-hover);
+  color: var(--rm-surface);
 }
 
-ul {
-  list-style: none;
-  padding: 0;
+/* 보조 버튼: 테두리만 있는 작은 버튼 */
+.item-actions button,
+#duplicate-notice button,
+#bookmarklet-section button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: auto;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--rm-control-border);
+  border-radius: var(--rm-radius-field);
+  background: transparent;
+  color: var(--rm-ink);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
-li {
-  padding: 0.75rem 0;
-  border-bottom: 1px solid #ccc;
+.item-actions button:hover,
+.item-actions button:focus,
+.item-actions button:active,
+#duplicate-notice button:hover,
+#duplicate-notice button:focus,
+#duplicate-notice button:active,
+#bookmarklet-section button:hover,
+#bookmarklet-section button:focus,
+#bookmarklet-section button:active {
+  border-color: var(--rm-ink-2);
+  background: var(--rm-hover);
+  color: var(--rm-ink);
 }
 
-li a {
-  font-weight: bold;
-  word-break: break-all;
+.item-actions button[data-action="delete"]:hover,
+.item-actions button[data-action="delete-category"]:hover {
+  border-color: var(--rm-danger);
+  color: var(--rm-danger);
 }
 
-.link-url,
-.link-date {
-  font-size: 0.85rem;
-  color: #555;
-  word-break: break-all;
-}
-
-li.highlight {
-  background: #fff3b0;
+.item-actions select {
+  width: auto;
+  max-width: 13rem;
+  padding: 0.35rem 1.9rem 0.35rem 0.7rem;
+  background-color: var(--rm-surface);
+  background-position: right 0.55rem center;
+  background-size: 0.8rem auto;
+  font-size: 0.8125rem;
+  font-weight: 600;
 }
 
 .item-actions {
   display: flex;
-  gap: 0.5rem;
-  margin-top: 0.25rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
 }
 
-#trash-section {
-  margin-top: 2rem;
+/* ===== 저장 영역 ===== */
+.capture {
+  padding: 1.25rem;
+  border: 1px solid var(--rm-rule);
+  border-radius: var(--rm-radius-panel);
+  background: var(--rm-surface);
 }
 
-#trash-summary {
-  cursor: pointer;
-  font-weight: bold;
+#link-form {
+  display: grid;
+  align-items: end;
+  grid-template-columns: minmax(0, 1fr) minmax(10rem, 15rem) auto;
+  gap: 0.9rem 1rem;
+  margin: 0;
 }
 
-.trash-title {
-  font-weight: bold;
-  word-break: break-all;
+#link-form .field-url {
+  grid-column: 1 / -1;
 }
 
-/* 본 링크는 내용만 흐리게 한다. 버튼까지 흐리면 눌러도 되는지 알기 어렵다. */
-li.seen a,
-li.seen .link-url,
-li.seen .link-date {
-  opacity: 0.55;
+#url-input {
+  padding: 0.8rem 1rem;
+  font-size: 1.0625rem;
+}
+
+#title-input,
+#category-select {
+  padding-top: 0.65rem;
+  padding-bottom: 0.65rem;
+}
+
+@media (max-width: 40rem) {
+  #link-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ===== 알림 ===== */
+#message,
+#status,
+#duplicate-notice,
+#import-notice {
+  margin: 0.9rem 0 0;
+  padding: 0.65rem 0.9rem;
+  border-left: 4px solid var(--rm-ink-2);
+  border-radius: 4px 8px 8px 4px;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+#message:empty,
+#status:empty {
+  display: none;
+}
+
+#message {
+  border-color: var(--rm-danger);
+  background: var(--rm-danger-bg);
+}
+
+#status {
+  border-color: var(--rm-ok);
+  background: var(--rm-ok-bg);
+}
+
+#duplicate-notice,
+#import-notice {
+  border-color: var(--rm-warn);
+  background: var(--rm-warn-bg);
+}
+
+#import-notice {
+  margin: 0 0 1rem;
+}
+
+#duplicate-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.9rem;
+}
+
+#duplicate-notice[hidden],
+#import-notice[hidden] {
+  display: none;
+}
+
+/* ===== 카테고리 목록 (왼쪽) ===== */
+/* Pico는 nav 안의 목록을 가로로 늘어놓으므로 세로 목록으로 되돌린다. 들여쓰기는 항목의 padding-left(JS가 깊이만큼 지정)가 맡는다. */
+.shelf {
+  display: block;
+}
+
+.shelf ul {
+  display: block;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shelf li {
+  display: block;
+  margin: 0;
+  padding-top: 0;
+  padding-right: 0;
+  padding-bottom: 0;
+}
+
+.shelf button {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid transparent;
+  border-radius: var(--rm-radius-field);
+  background: transparent;
+  color: var(--rm-ink);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  text-align: left;
+}
+
+.shelf button:hover,
+.shelf button:focus {
+  background: var(--rm-hover);
+  color: var(--rm-ink);
+}
+
+.shelf button[aria-current="true"] {
+  border-color: var(--rm-rule-strong);
+  background: var(--rm-surface);
+  font-weight: 700;
+}
+
+.shelf button .icon {
+  color: var(--ribbon, var(--rm-ink-2));
+}
+
+.filter-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-count {
+  margin-left: auto;
+  color: var(--rm-ink-2);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+/* 개수의 괄호는 글자 데이터에는 남기되 화면에서는 숨긴다 */
+.paren {
+  display: none;
+}
+
+@media (max-width: 59.99rem) {
+  .shelf ul {
+    max-height: 15rem;
+    overflow-y: auto;
+  }
+}
+
+/* ===== 링크 목록 ===== */
+.reading-list h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+#empty-notice {
+  margin: 0;
+  padding: 2rem 1.5rem;
+  border: 1px dashed var(--rm-rule-strong);
+  border-radius: var(--rm-radius-panel);
+  color: var(--rm-ink-2);
+  text-align: center;
+}
+
+/* 빈 목록: 아직 꽂히지 않은 회색 책갈피를 앞에 둔다 */
+#empty-notice::before {
+  display: block;
+  width: 1rem;
+  height: 2.2rem;
+  margin: 0 auto 0.9rem;
+  background: var(--rm-ribbon-none);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%);
+  content: "";
+}
+
+#empty-notice[hidden] {
+  display: none;
+}
+
+#link-list,
+#trash-list,
+#category-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+#link-list {
+  border-top: 1px solid var(--rm-rule);
+}
+
+#link-list:empty {
+  border-top: 0;
+}
+
+#link-list > li {
+  position: relative;
+  display: grid;
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "head head"
+    "url url"
+    "date actions";
+  gap: 0.15rem 1rem;
+  margin: 0;
+  padding: 1rem 0 0.85rem 2.5rem;
+  border-bottom: 1px solid var(--rm-rule);
+}
+
+#link-list .link-head { grid-area: head; }
+#link-list .link-url { grid-area: url; }
+#link-list .link-date { grid-area: date; }
+#link-list .item-actions {
+  grid-area: actions;
+  justify-content: flex-end;
+  margin-top: 0.4rem;
+}
+
+#link-list a {
+  color: var(--rm-ink);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.4;
+  text-decoration: none;
+}
+
+#link-list a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.link-url,
+.link-date {
+  color: var(--rm-ink-2);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.link-url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 책갈피 리본: 안 읽은 링크는 꽉 찬 색, 읽은 링크는 윤곽만 (SVG, 색은 항목의 --ribbon) */
+.ribbon {
+  position: absolute;
+  top: -1px;
+  left: 0.5rem;
+  width: 1rem;
+  height: 2.25rem;
+  color: var(--ribbon, var(--rm-ribbon-none));
+  overflow: visible;
+}
+
+.ribbon-fill {
+  fill: currentColor;
+}
+
+.ribbon-outline {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+li:not(.seen) .ribbon-outline,
+li.seen .ribbon-fill {
+  display: none;
+}
+
+li.seen > .link-head a {
+  color: var(--rm-ink-2);
+  font-weight: 500;
 }
 
 .seen-label {
-  margin-left: 0.5rem;
-  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: 0.6rem;
+  padding: 0.05rem 0.55rem 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--rm-hover);
+  color: var(--rm-ink-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  vertical-align: 0.12em;
 }
 
-#bookmarklet-section {
-  margin-top: 1rem;
+@media (max-width: 40rem) {
+  #link-list > li {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "head"
+      "url"
+      "date"
+      "actions";
+  }
+
+  /* 좁은 화면: 선택 상자는 한 줄을 다 쓰고, 버튼 둘은 그 아래에서 같은 너비로 나란히 놓는다 */
+  #link-list .item-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    margin-top: 0.5rem;
+  }
+
+  #link-list .item-actions select {
+    grid-column: 1 / -1;
+    width: 100%;
+    max-width: none;
+  }
+
+  #link-list .item-actions button {
+    justify-content: center;
+    padding: 0.5rem 0.7rem;
+  }
 }
 
-#bookmarklet-section summary {
-  cursor: pointer;
-  font-weight: bold;
+/* 이동했을 때 잠깐 강조 (JS가 2초 뒤에 highlight를 뗀다) */
+@keyframes rm-flash {
+  0%,
+  55% {
+    background: var(--rm-flash);
+  }
+  100% {
+    background: transparent;
+  }
 }
 
-#bookmarklet-local-warning {
-  color: #b26a00;
+li.highlight {
+  animation: rm-flash 2s ease-out forwards;
 }
 
-#bookmarklet-app-url {
-  word-break: break-all;
+@media (prefers-reduced-motion: reduce) {
+  li.highlight {
+    background: var(--rm-flash);
+    animation: none;
+  }
 }
 
-#category-section {
-  margin-top: 1rem;
+li:focus-visible {
+  border-radius: 6px;
+  outline-offset: -2px;
 }
 
-#category-section summary {
-  cursor: pointer;
-  font-weight: bold;
+/* ===== 도구 영역 (휴지통, 카테고리 관리, 북마크) ===== */
+.tools {
+  display: grid;
+  gap: 0;
+  border-top: 1px solid var(--rm-rule);
 }
 
-#category-form {
-  margin: 0.5rem 0;
+.tools details {
+  margin: 0;
+  padding: 0.9rem 0;
+  border-bottom: 1px solid var(--rm-rule);
+}
+
+.tools summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
+  color: var(--rm-ink);
+  font-weight: 600;
+}
+
+.tools summary::after {
+  float: none;
+  margin-inline-start: auto;
+}
+
+.tools details[open] > summary {
+  margin-bottom: 0.9rem;
+}
+
+.tools summary .icon {
+  color: var(--rm-ink-2);
+}
+
+.tools p {
+  margin: 0 0 0.75rem;
+  color: var(--rm-ink-2);
+  font-size: 0.9375rem;
+}
+
+.tools code {
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: var(--rm-hover);
+  color: var(--rm-ink);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+#trash-empty[hidden],
+#category-empty[hidden] {
+  display: none;
+}
+
+#trash-list > li,
+#category-list > li {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--rm-rule);
+}
+
+.trash-title {
+  color: var(--rm-ink);
+  font-weight: 600;
+}
+
+#trash-list .link-date {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  padding: 0 0.55rem;
+  border-radius: 999px;
+  background: var(--rm-warn-bg);
+  color: var(--rm-warn);
+  font-weight: 600;
 }
 
 #category-list .item-actions input {
   flex: 1;
-  min-width: 0;
+  min-width: 9rem;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.9375rem;
 }
 
-#category-filter {
-  margin: 1rem 0;
+#category-form {
+  display: grid;
+  align-items: end;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  margin: 0 0 1rem;
 }
 
-#category-filter-list li {
-  padding: 0.1rem 0;
-  border-bottom: none;
+#category-form input,
+#category-form select {
+  padding-top: 0.6rem;
+  padding-bottom: 0.6rem;
+  font-size: 0.9375rem;
 }
 
-#category-filter-list button[aria-current="true"] {
-  font-weight: bold;
-  text-decoration: underline;
+#category-form button[type="submit"] {
+  padding: 0.6rem 1rem;
+  font-size: 0.9375rem;
+}
+
+@media (max-width: 40rem) {
+  #category-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* 북마크로 끌어다 놓는 링크 */
+#bookmarklet-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border: 1px dashed var(--rm-rule-strong);
+  border-radius: 999px;
+  background: var(--rm-surface);
+  color: var(--rm-ink);
+  font-weight: 700;
+  text-decoration: none;
+  cursor: grab;
+}
+
+#bookmarklet-link:hover {
+  border-color: var(--rm-ink-2);
+}
+
+#bookmarklet-link .icon {
+  color: var(--rm-focus);
+}
+
+#bookmarklet-local-warning {
+  color: var(--rm-warn);
+  font-weight: 600;
+}
+
+#bookmarklet-local-warning[hidden] {
+  display: none;
 }

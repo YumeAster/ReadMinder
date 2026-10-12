@@ -3,82 +3,118 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>링크 저장</title>
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f2f4f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0e121a" media="(prefers-color-scheme: dark)" />
+    <title>ReadMinder</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%232f6fde' d='M9 3h14v26l-7-6-7 6z'/%3E%3C/svg%3E"
+    />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <main>
-      <h1>링크 저장</h1>
+    <div class="app">
+      <header class="app-header">
+        <h1 class="wordmark"><span class="mark" aria-hidden="true"></span>ReadMinder</h1>
+        <p class="tagline">나중에 읽을 링크를 모아두는 곳</p>
+      </header>
 
-      <p id="import-notice" role="alert" hidden>
-        다른 페이지에서 전달된 링크입니다. 북마크를 직접 눌러 저장하려던 것이 아니라면 저장하지 마세요.
-      </p>
+      <section class="capture" aria-label="링크 저장">
+        <p id="import-notice" role="alert" hidden>
+          다른 페이지에서 전달된 링크입니다. 북마크를 직접 눌러 저장하려던 것이 아니라면 저장하지 마세요.
+        </p>
 
-      <form id="link-form" novalidate>
-        <label for="url-input">주소</label>
-        <input id="url-input" type="text" inputmode="url" autocomplete="off" placeholder="https://example.com" />
+        <form id="link-form" novalidate>
+          <div class="field field-url">
+            <label for="url-input">주소</label>
+            <input id="url-input" type="text" inputmode="url" autocomplete="off" placeholder="https://example.com" />
+          </div>
 
-        <label for="title-input">제목 (선택)</label>
-        <input id="title-input" type="text" autocomplete="off" placeholder="비워두면 도메인이 제목이 됩니다" />
+          <div class="field">
+            <label for="title-input">제목 (선택)</label>
+            <input id="title-input" type="text" autocomplete="off" placeholder="비워두면 도메인이 제목이 됩니다" />
+          </div>
 
-        <label for="category-select">카테고리</label>
-        <select id="category-select"></select>
+          <div class="field">
+            <label for="category-select">카테고리</label>
+            <select id="category-select"></select>
+          </div>
 
-        <button id="save-button" type="submit">저장</button>
-      </form>
+          <button id="save-button" type="submit"><span class="icon-slot" data-icon="bookmark-plus"></span>저장</button>
+        </form>
 
-      <p id="message" role="alert"></p>
-      <p id="status" role="status"></p>
+        <p id="message" role="alert"></p>
+        <p id="status" role="status"></p>
 
-      <div id="duplicate-notice" role="alert" hidden>
-        <span id="duplicate-text"></span>
-        <button id="go-to-duplicate" type="button">해당 링크로 이동</button>
-      </div>
+        <div id="duplicate-notice" role="alert" hidden>
+          <span id="duplicate-text"></span>
+          <button id="go-to-duplicate" type="button">해당 링크로 이동</button>
+        </div>
+      </section>
 
-      <nav id="category-filter" aria-label="카테고리별 보기">
+      <nav id="category-filter" class="shelf" aria-label="카테고리별 보기">
         <ul id="category-filter-list"></ul>
       </nav>
 
-      <h2>저장한 링크</h2>
-      <p id="empty-notice">아직 저장한 링크가 없습니다. 위에 주소를 입력해 저장해 보세요.</p>
-      <ul id="link-list"></ul>
+      <section class="reading-list" aria-labelledby="list-title">
+        <h2 id="list-title">저장한 링크</h2>
+        <p id="empty-notice">아직 저장한 링크가 없습니다. 위에 주소를 입력해 저장해 보세요.</p>
+        <ul id="link-list"></ul>
+      </section>
 
-      <details id="trash-section">
-        <summary id="trash-summary">휴지통</summary>
-        <p id="trash-notice"></p>
-        <p id="trash-empty">휴지통이 비어 있습니다.</p>
-        <ul id="trash-list"></ul>
-      </details>
+      <div class="tools">
+        <details id="trash-section">
+          <summary>
+            <span class="icon-slot" data-icon="trash"></span><span id="trash-summary">휴지통</span>
+          </summary>
+          <p id="trash-notice"></p>
+          <p id="trash-empty">휴지통이 비어 있습니다.</p>
+          <ul id="trash-list"></ul>
+        </details>
 
-      <details id="category-section">
-        <summary id="category-summary">카테고리 관리</summary>
-        <form id="category-form" novalidate>
-          <label for="category-name-input">새 카테고리 이름</label>
-          <input id="category-name-input" type="text" autocomplete="off" />
-          <label for="category-parent-select">위치 (어느 카테고리 안에 만들지)</label>
-          <select id="category-parent-select"></select>
-          <button type="submit">카테고리 추가</button>
-        </form>
-        <p id="category-empty">만든 카테고리가 없습니다.</p>
-        <ul id="category-list"></ul>
-      </details>
+        <details id="category-section">
+          <summary>
+            <span class="icon-slot" data-icon="folders"></span><span id="category-summary">카테고리 관리</span>
+          </summary>
+          <form id="category-form" novalidate>
+            <div class="field">
+              <label for="category-name-input">새 카테고리 이름</label>
+              <input id="category-name-input" type="text" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label for="category-parent-select">위치 (어느 카테고리 안에 만들지)</label>
+              <select id="category-parent-select"></select>
+            </div>
+            <button type="submit"><span class="icon-slot" data-icon="folder-plus"></span>카테고리 추가</button>
+          </form>
+          <p id="category-empty">만든 카테고리가 없습니다.</p>
+          <ul id="category-list"></ul>
+        </details>
 
-      <details id="bookmarklet-section">
-        <summary>북마크로 저장하기 (제목 자동 입력)</summary>
-        <p>
-          아래 링크를 브라우저의 북마크 바로 끌어다 놓으세요. 저장하려는 페이지에서 그 북마크를 누르면
-          이 앱이 열리고, 페이지의 주소와 제목이 입력창에 채워집니다. 내용을 확인한 뒤 저장을 눌러 주세요.
-        </p>
-        <p><a id="bookmarklet-link" href="#">링크 저장</a></p>
-        <p>끌어다 놓기가 어렵다면 코드를 복사해서, 새 북마크를 만들고 주소 칸에 붙여넣으세요.</p>
-        <p><button id="copy-bookmarklet" type="button">북마크 코드 복사</button></p>
-        <p>이 북마크는 <code id="bookmarklet-app-url"></code> 주소의 앱으로 열립니다. 앱 주소가 바뀌면 다시 설치해야 합니다.</p>
-        <p id="bookmarklet-local-warning" hidden>
-          지금 이 앱은 이 컴퓨터에서만 열리는 주소(localhost)로 열려 있습니다. 이 주소에서 만든 북마크는
-          배포된 앱에서는 쓸 수 없으니, 배포된 주소에서 다시 설치하세요.
-        </p>
-      </details>
-    </main>
+        <details id="bookmarklet-section">
+          <summary>
+            <span class="icon-slot" data-icon="bookmark"></span><span>북마크로 저장하기 (제목 자동 입력)</span>
+          </summary>
+          <p>
+            아래 링크를 브라우저의 북마크 바로 끌어다 놓으세요. 저장하려는 페이지에서 그 북마크를 누르면
+            이 앱이 열리고, 페이지의 주소와 제목이 입력창에 채워집니다. 내용을 확인한 뒤 저장을 눌러 주세요.
+          </p>
+          <p><a id="bookmarklet-link" href="#"><span class="icon-slot" data-icon="bookmark"></span>링크 저장</a></p>
+          <p>끌어다 놓기가 어렵다면 코드를 복사해서, 새 북마크를 만들고 주소 칸에 붙여넣으세요.</p>
+          <p>
+            <button id="copy-bookmarklet" type="button">
+              <span class="icon-slot" data-icon="copy"></span>북마크 코드 복사
+            </button>
+          </p>
+          <p>이 북마크는 <code id="bookmarklet-app-url"></code> 주소의 앱으로 열립니다. 앱 주소가 바뀌면 다시 설치해야 합니다.</p>
+          <p id="bookmarklet-local-warning" hidden>
+            지금 이 앱은 이 컴퓨터에서만 열리는 주소(localhost)로 열려 있습니다. 이 주소에서 만든 북마크는
+            배포된 앱에서는 쓸 수 없으니, 배포된 주소에서 다시 설치하세요.
+          </p>
+        </details>
+      </div>
+    </div>
 
     <script type="module" src="main.js"></script>
   </body>

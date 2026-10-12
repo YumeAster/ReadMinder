@@ -1,7 +1,8 @@
 import { TRASH_RETENTION_DAYS, cleanUpTrash, daysUntilPurge, moveToTrash, restoreFromTrash, toggleSeen, } from "./links.js";
 import { buildBookmarklet, isLocalAddress } from "./bookmarklet.js";
+import { createIcon, createRibbon, fillIconSlots } from "./icons.js";
 import { parseImportHash } from "./import.js";
-import { ALL_LINKS_FILTER, addCategory, categoryPath, countLinks, createFilterMatcher, deleteCategory, filterLinks, flattenTree, isSameFilter, renameCategory, repairCategories, resolveFilter, sanitizeLinkCategories, setLinkCategory, } from "./categories.js";
+import { ALL_LINKS_FILTER, addCategory, categoryPath, countLinks, createFilterMatcher, createRootIndexLookup, deleteCategory, filterLinks, flattenTree, isSameFilter, renameCategory, repairCategories, resolveFilter, sanitizeLinkCategories, setLinkCategory, } from "./categories.js";
 import { isListStorageKey, loadCategories, loadLinks, loadTrash, saveCategories, saveLinks, saveTrash, } from "./storage.js";
 import { defaultTitleFor, findLinkByUrl, parseUserUrl } from "./url.js";
 /** id로 요소를 찾고, 없거나 타입이 다르면 원인을 알 수 있게 에러를 던진다. */
@@ -44,6 +45,8 @@ const bookmarkletLocalWarning = getElement("bookmarklet-local-warning", HTMLPara
 const HIGHLIGHT_MS = 2000;
 /** 카테고리 목록에서 들여쓰기로 보여주는 최대 단계. 깊이에는 제한이 없지만, 너무 깊으면 화면 밖으로 밀려나 이 값에서 멈춘다. */
 const MAX_INDENT_LEVELS = 8;
+/** 책갈피 색 개수. style.css의 --rm-ribbon-0 ~ 7과 같아야 한다. 최상위 카테고리가 이보다 많으면 색을 처음부터 다시 돌려 쓴다. */
+const RIBBON_COLOR_COUNT = 8;
 /** 최신 항목이 앞에 오는 순서로 유지한다. 저장소에서 읽어 채운다 (loadStateFromStorage). */
 let links = [];
 /** 카테고리. 최상위부터 하위까지 한 목록에 담고, 상위는 parentId로 가리킨다. 저장소에서 읽어 채운다. */
@@ -107,16 +110,25 @@ function showDuplicateNotice(existing) {
 }
 function formatDate(isoString) {
     const date = new Date(isoString);
-    return Number.isNaN(date.getTime()) ? "" : date.toLocaleString("ko-KR");
+    return Number.isNaN(date.getTime()) ? "" : date.toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" });
 }
-/** 스크린리더가 여러 항목의 같은 버튼을 구분할 수 있도록 ariaLabel에 항목 제목을 넣는다. */
-function createActionButton(action, label, ariaLabel) {
+/**
+ * 아이콘과 글자가 함께 있는 버튼. 아이콘은 글자가 없으므로 버튼의 글자(textContent)는 label 그대로다.
+ * 스크린리더가 여러 항목의 같은 버튼을 구분할 수 있도록 ariaLabel에 항목 제목을 넣는다.
+ */
+function createActionButton(action, label, ariaLabel, icon) {
     const button = document.createElement("button");
     button.type = "button";
     button.dataset["action"] = action;
-    button.textContent = label;
     button.setAttribute("aria-label", ariaLabel);
+    const text = document.createElement("span");
+    text.textContent = label;
+    button.append(createIcon(icon), text);
     return button;
+}
+/** 책갈피 색을 정하는 값. style.css의 [data-ribbon] 규칙과 짝이다. 카테고리가 없으면 "none"(회색). */
+function ribbonValue(rootIndex) {
+    return rootIndex === null ? "none" : String(rootIndex % RIBBON_COLOR_COUNT);
 }
 /** 링크의 카테고리를 고르는 선택 상자. 스크린리더가 구분할 수 있도록 ariaLabel에 항목 제목을 넣는다. */
 function createCategorySelect(nodes, selectedId, ariaLabel) {
@@ -127,9 +139,10 @@ function createCategorySelect(nodes, selectedId, ariaLabel) {
     select.value = selectedId ?? "";
     return select;
 }
-function renderItem(link, nodes) {
+function renderItem(link, nodes, rootIndexOf) {
     const item = document.createElement("li");
     item.dataset["linkId"] = link.id;
+    item.dataset["ribbon"] = ribbonValue(rootIndexOf(link.categoryId));
     // 이동 버튼을 눌렀을 때 키보드·스크린리더 사용자도 같은 위치로 옮겨가도록 포커스를 받을 수 있게 한다.
     item.tabIndex = -1;
     // 흐리게 보이는 것만으로는 상태를 알 수 없으므로, 아래에서 "본 링크" 글자도 함께 넣는다.
@@ -142,23 +155,27 @@ function renderItem(link, nodes) {
     const address = document.createElement("div");
     address.className = "link-url";
     address.textContent = link.url;
+    address.title = link.url; // 한 줄로 줄여 보이므로, 마우스를 올리면 전체 주소를 보여준다.
     const savedAt = document.createElement("div");
     savedAt.className = "link-date";
     savedAt.textContent = formatDate(link.createdAt);
+    // 책갈피 리본. 안 읽은 링크는 색이 꽉 차고, 읽은 링크는 윤곽만 남는다 (보이는 쪽은 style.css가 정한다).
+    const ribbon = createRibbon();
     const head = document.createElement("div");
+    head.className = "link-head";
     head.append(anchor);
     if (link.seen) {
         const seenLabel = document.createElement("span");
         seenLabel.className = "seen-label";
-        seenLabel.textContent = "본 링크";
+        seenLabel.append(createIcon("check"), "본 링크");
         head.append(seenLabel);
     }
     // 버튼 문구가 지금 상태가 아니라 누르면 일어날 일을 나타낸다.
     const seenButtonLabel = link.seen ? "아직 안 봄" : "이미 본 링크";
     const actions = document.createElement("div");
     actions.className = "item-actions";
-    actions.append(createCategorySelect(nodes, link.categoryId, `카테고리 변경: ${link.title}`), createActionButton("toggle-seen", seenButtonLabel, `${seenButtonLabel}: ${link.title}`), createActionButton("delete", "삭제", `삭제: ${link.title}`));
-    item.append(head, address, savedAt, actions);
+    actions.append(createCategorySelect(nodes, link.categoryId, `카테고리 변경: ${link.title}`), createActionButton("toggle-seen", seenButtonLabel, `${seenButtonLabel}: ${link.title}`, link.seen ? "eye-off" : "eye"), createActionButton("delete", "삭제", `삭제: ${link.title}`, "trash"));
+    item.append(ribbon, head, address, savedAt, actions);
     return item;
 }
 function renderTrashItem(item, now) {
@@ -176,7 +193,7 @@ function renderTrashItem(item, now) {
     remaining.textContent = `${daysUntilPurge(item, now)}일 후 영구 삭제`;
     const actions = document.createElement("div");
     actions.className = "item-actions";
-    actions.append(createActionButton("restore", "복구", `복구: ${item.title}`));
+    actions.append(createActionButton("restore", "복구", `복구: ${item.title}`, "undo-2"));
     element.append(title, address, remaining, actions);
     return element;
 }
@@ -186,15 +203,30 @@ function describeEmptyList() {
         return "아직 저장한 링크가 없습니다. 위에 주소를 입력해 저장해 보세요.";
     return filter.kind === "uncategorized" ? "미분류 링크가 없습니다." : "이 카테고리에는 링크가 없습니다.";
 }
-function createFilterEntry(entryFilter, label, count, depth, fullLabel = label) {
+function createFilterEntry(entryFilter, label, count, depth, icon, ribbon, fullLabel = label) {
     const item = document.createElement("li");
     item.style.paddingLeft = `${Math.min(depth, MAX_INDENT_LEVELS)}rem`;
+    if (ribbon !== null)
+        item.dataset["ribbon"] = ribbon; // 폴더 아이콘이 그 카테고리의 책갈피 색을 띤다.
     const button = document.createElement("button");
     button.type = "button";
     button.dataset["filter"] = entryFilter.kind;
     if (entryFilter.kind === "category")
         button.dataset["categoryId"] = entryFilter.id;
-    button.textContent = `${label} (${count})`;
+    // 버튼의 글자는 "이름 (개수)"로 유지한다. 개수의 괄호는 화면에서만 숨긴다 (style.css의 .paren).
+    const labelText = document.createElement("span");
+    labelText.className = "filter-label";
+    labelText.textContent = `${label} `;
+    const countText = document.createElement("span");
+    countText.className = "filter-count";
+    const openParen = document.createElement("span");
+    openParen.className = "paren";
+    openParen.textContent = "(";
+    const closeParen = document.createElement("span");
+    closeParen.className = "paren";
+    closeParen.textContent = ")";
+    countText.append(openParen, String(count), closeParen);
+    button.append(createIcon(icon), labelText, countText);
     // 들여쓰기만으로는 상위 카테고리를 알 수 없는 스크린리더 사용자를 위해 경로를 이름으로 쓴다.
     button.setAttribute("aria-label", `${fullLabel} (${count})`);
     if (isSameFilter(entryFilter, filter))
@@ -203,18 +235,19 @@ function createFilterEntry(entryFilter, label, count, depth, fullLabel = label) 
     return item;
 }
 /** "전체 / 미분류 / 각 카테고리" 보기 버튼과 링크 수를 다시 그린다. 카테고리의 수에는 하위 카테고리의 링크도 들어간다. */
-function renderFilterList(nodes) {
+function renderFilterList(nodes, rootIndexOf) {
     const counts = countLinks(categories, links);
-    filterList.replaceChildren(createFilterEntry(ALL_LINKS_FILTER, "전체", counts.total, 0), createFilterEntry({ kind: "uncategorized" }, "미분류", counts.uncategorized, 0), ...nodes.map((node) => createFilterEntry({ kind: "category", id: node.category.id }, node.category.name, counts.byCategory.get(node.category.id) ?? 0, node.depth, node.path)));
+    filterList.replaceChildren(createFilterEntry(ALL_LINKS_FILTER, "전체", counts.total, 0, "library", null), createFilterEntry({ kind: "uncategorized" }, "미분류", counts.uncategorized, 0, "inbox", null), ...nodes.map((node) => createFilterEntry({ kind: "category", id: node.category.id }, node.category.name, counts.byCategory.get(node.category.id) ?? 0, node.depth, "folder", ribbonValue(rootIndexOf(node.category.id)), node.path)));
 }
 function render() {
     const now = new Date();
     const nodes = flattenTree(categories);
+    const rootIndexOf = createRootIndexLookup(categories);
     const visibleLinks = filterLinks(links, categories, filter);
-    listElement.replaceChildren(...visibleLinks.map((link) => renderItem(link, nodes)));
+    listElement.replaceChildren(...visibleLinks.map((link) => renderItem(link, nodes, rootIndexOf)));
     emptyNotice.hidden = visibleLinks.length > 0;
     emptyNotice.textContent = describeEmptyList();
-    renderFilterList(nodes);
+    renderFilterList(nodes, rootIndexOf);
     trashList.replaceChildren(...trash.map((item) => renderTrashItem(item, now)));
     trashEmptyNotice.hidden = trash.length > 0;
     trashSummary.textContent = `휴지통 (${trash.length})`;
@@ -332,7 +365,7 @@ function renderCategoryRow(node) {
     nameInput.setAttribute("aria-label", `카테고리 이름: ${node.path}`);
     const actions = document.createElement("div");
     actions.className = "item-actions";
-    actions.append(nameInput, createActionButton("rename-category", "이름 변경", `이름 변경: ${node.path}`), createActionButton("delete-category", "삭제", `삭제: ${node.path}`));
+    actions.append(nameInput, createActionButton("rename-category", "이름 변경", `이름 변경: ${node.path}`, "pencil"), createActionButton("delete-category", "삭제", `삭제: ${node.path}`, "trash"));
     row.append(actions);
     // 들여쓰기만으로는 어느 카테고리 안에 있는지 알기 어려우니, 하위 카테고리에는 경로도 글자로 보여준다.
     if (node.depth > 0) {
@@ -791,6 +824,7 @@ window.addEventListener("storage", (event) => {
         renderCategoryManager();
     showStatus("다른 탭에서 바뀐 내용을 반영했습니다.");
 });
+fillIconSlots(document);
 trashNotice.textContent = `삭제한 링크는 ${TRASH_RETENTION_DAYS}일 동안 보관된 뒤 영구 삭제됩니다.`;
 showMessage(loadStateFromStorage());
 render();

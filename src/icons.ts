@@ -59,3 +59,27 @@ export function fillIconSlots(root: ParentNode): void {
     else console.error("알 수 없는 아이콘 이름입니다:", name);
   }
 }
+
+/**
+ * 링크 항목에 걸리는 책갈피 리본. 안 읽은 링크는 색이 꽉 찬 모양(ribbon-fill), 읽은 링크는 윤곽만(ribbon-outline) 보이고,
+ * 둘 중 무엇을 보여줄지는 style.css가 항목의 seen 클래스로 정한다. 색은 글자색(currentColor)을 따른다.
+ */
+export function createRibbon(): SVGSVGElement {
+  const svg = document.createElementNS(SVG_NAMESPACE, "svg");
+  svg.setAttribute("viewBox", "0 0 16 36");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  svg.classList.add("ribbon");
+
+  const fill = document.createElementNS(SVG_NAMESPACE, "path");
+  fill.setAttribute("class", "ribbon-fill");
+  fill.setAttribute("d", "M0 0H16V36L8 28L0 36Z");
+
+  // 위쪽은 줄에 매달려 있으므로 윤곽을 닫지 않는다.
+  const outline = document.createElementNS(SVG_NAMESPACE, "path");
+  outline.setAttribute("class", "ribbon-outline");
+  outline.setAttribute("d", "M1 0V33.2L8 26.2L15 33.2V0");
+
+  svg.append(fill, outline);
+  return svg;
+}

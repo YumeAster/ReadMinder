@@ -1,6 +1,8 @@
-import type { Result, SavedLink } from "./types.js";
+import type { Result, SavedLink, TrashedLink } from "./types.js";
 
 const LINKS_KEY = "links";
+/** 삭제한 링크를 보관하는 키. 링크 목록과 분리해 둔다 */
+const TRASH_KEY = "trash";
 /** 깨진 데이터를 덮어쓰기 전에 원본을 보관해 두는 키의 꼬리말 (예: "links.corrupt-backup") */
 const BACKUP_SUFFIX = ".corrupt-backup";
 
@@ -29,6 +31,15 @@ function toSavedLink(value: unknown): SavedLink | null {
     seenValue = seen;
   }
   return { id, url, title, createdAt, seen: seenValue };
+}
+
+/** 저장된 값 하나를 휴지통 링크로 바꾼다. 삭제 시각이 없거나 날짜가 아니면 null. */
+function toTrashedLink(value: unknown): TrashedLink | null {
+  const link = toSavedLink(value);
+  if (link === null || !isRecord(value)) return null;
+  const deletedAt = value["deletedAt"];
+  if (typeof deletedAt !== "string" || Number.isNaN(Date.parse(deletedAt))) return null;
+  return { ...link, deletedAt };
 }
 
 /** JSON 문자열을 배열로 읽고, 각 항목을 convert로 바꾼다. 하나라도 틀리면 전체를 null로 본다. */
@@ -62,6 +73,11 @@ function parseList<T>(raw: string, convert: (value: unknown) => T | null): T[] |
 /** 저장된 JSON 문자열을 링크 목록으로 읽는다. 읽을 수 없으면 null. */
 export function parseLinks(raw: string): SavedLink[] | null {
   return parseList(raw, toSavedLink);
+}
+
+/** 저장된 JSON 문자열을 휴지통 목록으로 읽는다. 읽을 수 없으면 null. */
+export function parseTrash(raw: string): TrashedLink[] | null {
+  return parseList(raw, toTrashedLink);
 }
 
 export interface LoadOutcome<T> {
@@ -124,4 +140,12 @@ export function loadLinks(): LoadOutcome<SavedLink> {
 
 export function saveLinks(links: readonly SavedLink[]): Result<null> {
   return saveList(LINKS_KEY, links);
+}
+
+export function loadTrash(): LoadOutcome<TrashedLink> {
+  return loadList(TRASH_KEY, "휴지통 데이터", parseTrash);
+}
+
+export function saveTrash(trash: readonly TrashedLink[]): Result<null> {
+  return saveList(TRASH_KEY, trash);
 }

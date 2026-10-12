@@ -12,6 +12,12 @@ export interface SavedLink {
   readonly seen: boolean;
 }
 
+/** 휴지통에 있는 링크. 삭제 전 링크 정보를 그대로 두고, 삭제한 시각만 더한다. */
+export interface TrashedLink extends SavedLink {
+  /** 휴지통으로 옮긴 시각 (ISO 8601 문자열). 보관 기간 계산의 기준이다 */
+  readonly deletedAt: string;
+}
+
 /** 실패할 수 있는 작업의 결과. 에러를 던지지 않고 값으로 돌려준다. */
 export type Result<T> =
   | { readonly ok: true; readonly value: T }

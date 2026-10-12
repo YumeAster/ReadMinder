@@ -1,7 +1,7 @@
 // 빌드된 docs/url.js를 검사한다. 실행: npm test
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { defaultTitleFor, parseUserUrl } from "../docs/url.js";
+import { defaultTitleFor, findLinkByUrl, parseUserUrl } from "../docs/url.js";
 
 function accepted(input) {
   const result = parseUserUrl(input);
@@ -65,4 +65,29 @@ test("점 없는 도메인, 공백 포함 주소는 거절한다", () => {
 
 test("기본 제목은 도메인이다", () => {
   assert.equal(defaultTitleFor(accepted("https://news.example.com/a/b")), "news.example.com");
+});
+
+function linkOf(url) {
+  return { id: url, url, title: url, createdAt: "2026-10-12T00:00:00.000Z" };
+}
+
+test("같은 주소는 표기가 달라도 중복으로 찾는다", () => {
+  const saved = [linkOf("https://example.com/")];
+  assert.equal(findLinkByUrl(saved, accepted("Example.com")), saved[0]);
+  assert.equal(findLinkByUrl(saved, accepted("  https://EXAMPLE.com/  ")), saved[0]);
+});
+
+test("쿼리나 # 조각이 다르면 중복이 아니다", () => {
+  const saved = [linkOf("https://example.com/a")];
+  assert.equal(findLinkByUrl(saved, accepted("example.com/a?x=1")), undefined);
+  assert.equal(findLinkByUrl(saved, accepted("example.com/a#top")), undefined);
+});
+
+test("스킴(http/https)이 다르면 중복이 아니다", () => {
+  const saved = [linkOf("https://example.com/")];
+  assert.equal(findLinkByUrl(saved, accepted("http://example.com")), undefined);
+});
+
+test("저장된 링크가 없으면 중복이 아니다", () => {
+  assert.equal(findLinkByUrl([], accepted("example.com")), undefined);
 });

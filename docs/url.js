@@ -39,3 +39,12 @@ export function parseUserUrl(input) {
 export function defaultTitleFor(url) {
     return url.hostname;
 }
+/**
+ * 이미 저장된 링크 중 같은 주소를 찾는다.
+ * 비교 기준은 입력 문자열이 아니라 정리된 주소(href)이므로
+ * "Example.com"과 "https://example.com/"은 같은 링크로 본다.
+ * 쿼리(?...)와 # 조각이 다르면 다른 주소로 취급한다.
+ */
+export function findLinkByUrl(links, url) {
+    return links.find((link) => link.url === url.href);
+}

@@ -385,7 +385,10 @@ function handleDelete(linkId: string): void {
   }
 
   // 삭제 후 키보드 포커스가 사라지지 않도록 다음 항목, 없으면 이전 항목, 둘 다 없으면 주소 입력창으로 옮긴다.
-  const neighbor = links[index + 1] ?? links[index - 1];
+  // 걸러서 보고 있을 때는 화면에 보이는 항목 기준이다 (보이지 않는 항목으로 포커스를 보낼 수 없다).
+  const visibleBefore = filterLinks(links, categories, filter);
+  const visibleIndex = visibleBefore.findIndex((link) => link.id === linkId);
+  const neighbor = visibleBefore[visibleIndex + 1] ?? visibleBefore[visibleIndex - 1];
 
   links = moved.links;
   trash = moved.trash;
@@ -614,6 +617,22 @@ function handleDeleteCategory(categoryId: string): void {
   categoryNameInput.focus();
 }
 
+/**
+ * 링크가 지금 보는 목록에 보이도록 보기를 맞춘다. 이미 보이면 그대로 두고,
+ * 안 보이면 그 링크가 속한 카테고리(없으면 미분류) 보기로 바꾼다.
+ * 보기를 바꿨다면 바꾼 곳의 이름을 돌려준다 (안내 문구용). 바꾸지 않았거나 링크가 없으면 null.
+ */
+function revealLink(linkId: string): string | null {
+  const target = links.find((link) => link.id === linkId);
+  if (target === undefined || createFilterMatcher(categories, filter)(target)) return null;
+
+  const hasCategory = target.categoryId !== null && categories.some((category) => category.id === target.categoryId);
+  filter = hasCategory && target.categoryId !== null ? { kind: "category", id: target.categoryId } : { kind: "uncategorized" };
+  render();
+  setFormCategoryToCurrentView();
+  return describeCategory(hasCategory ? target.categoryId : null);
+}
+
 /** 안내 문구에 쓸 카테고리 이름. 미분류는 '미분류', 카테고리는 경로로 보여준다. */
 function describeCategory(categoryId: string | null): string {
   if (categoryId === null) return "'미분류'";
@@ -669,6 +688,7 @@ function changeFilter(next: CategoryFilter): void {
 function handleRestore(linkId: string): void {
   clearFeedback();
 
+  const trashed = trash.find((item) => item.id === linkId);
   const result = restoreFromTrash(links, trash, linkId, new Set(categories.map((category) => category.id)));
   if (!result.ok) {
     showMessage(
@@ -688,8 +708,17 @@ function handleRestore(linkId: string): void {
   links = result.links;
   trash = result.trash;
   render();
-  showStatus(`"${result.restored.title}" 링크를 복구했습니다.`);
-  goToLink(result.restored.id); // 복구된 항목 위치로 이동해 강조한다 (중복 안내의 이동 버튼과 같은 동작).
+
+  // 복구된 항목이 지금 보는 목록에 없을 수 있다. 보이도록 보기를 맞춘 뒤 그 위치로 이동해 강조한다.
+  const switchedTo = revealLink(result.restored.id);
+  goToLink(result.restored.id);
+
+  const notes = [`"${result.restored.title}" 링크를 복구했습니다.`];
+  if (trashed !== undefined && trashed.categoryId !== result.restored.categoryId) {
+    notes.push("원래 카테고리가 삭제되어 '미분류'로 복구했습니다.");
+  }
+  if (switchedTo !== null) notes.push(`${switchedTo} 보기로 바꿨습니다.`);
+  showStatus(notes.join(" "));
 }
 
 /**
@@ -762,7 +791,11 @@ categoryForm.addEventListener("submit", (event) => {
 });
 
 goToDuplicateButton.addEventListener("click", () => {
-  if (duplicateTargetId !== null) goToLink(duplicateTargetId);
+  if (duplicateTargetId === null) return;
+  // 이미 저장된 링크가 지금 보는 카테고리 밖에 있으면, 그 링크가 보이는 카테고리로 보기를 바꾼 뒤 이동한다.
+  const switchedTo = revealLink(duplicateTargetId);
+  goToLink(duplicateTargetId);
+  if (switchedTo !== null) showStatus(`${switchedTo} 보기로 바꿨습니다.`);
 });
 
 form.addEventListener("submit", (event) => {

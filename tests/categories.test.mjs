@@ -8,6 +8,7 @@ import {
   categoryPath,
   checkCategoryName,
   countLinks,
+  createRootIndexLookup,
   deleteCategory,
   filterLinks,
   flattenTree,
@@ -378,4 +379,39 @@ test("isSameFilter: 종류가 같고 카테고리면 id까지 같아야 같다",
   assert.equal(isSameFilter({ kind: "category", id: "a" }, { kind: "category", id: "b" }), false);
   assert.equal(isSameFilter({ kind: "all" }, { kind: "uncategorized" }), false);
   assert.equal(isSameFilter({ kind: "category", id: "a" }, { kind: "all" }), false);
+});
+
+// ==== 책갈피 색: 최상위 카테고리 번호 ====
+test("createRootIndexLookup: 최상위는 만든 순서대로 0, 1, 2... 이고 하위는 최상위 조상과 같은 번호다", () => {
+  const categories = [cat("dev"), cat("fe", "dev"), cat("react", "fe"), cat("read"), cat("be", "dev"), cat("food")];
+  const indexOf = createRootIndexLookup(categories);
+  assert.deepEqual(["dev", "fe", "react", "be"].map(indexOf), [0, 0, 0, 0]);
+  assert.equal(indexOf("read"), 1);
+  assert.equal(indexOf("food"), 2);
+});
+
+test("createRootIndexLookup: 미분류와 없는 카테고리는 null이다", () => {
+  const indexOf = createRootIndexLookup([cat("a")]);
+  assert.equal(indexOf(null), null);
+  assert.equal(indexOf("ghost"), null);
+});
+
+test("createRootIndexLookup: 앞쪽 최상위를 지우면 뒤쪽 번호가 당겨진다", () => {
+  const before = createRootIndexLookup([cat("a"), cat("b"), cat("c")]);
+  const after = createRootIndexLookup([cat("b"), cat("c")]);
+  assert.deepEqual(["a", "b", "c"].map(before), [0, 1, 2]);
+  assert.deepEqual(["b", "c"].map(after), [0, 1]);
+});
+
+test("createRootIndexLookup: 잘못된 순환·끊어진 데이터에서도 끝나고 null을 돌려준다", () => {
+  const indexOf = createRootIndexLookup([cat("a", "b"), cat("b", "a"), cat("c", "missing"), cat("ok")]);
+  assert.equal(indexOf("a"), null);
+  assert.equal(indexOf("c"), null);
+  assert.equal(indexOf("ok"), 0);
+});
+
+test("createRootIndexLookup: 아주 깊은 트리도 처리한다", () => {
+  const deep = [cat("n0")];
+  for (let i = 1; i < 5000; i++) deep.push(cat(`n${i}`, `n${i - 1}`));
+  assert.equal(createRootIndexLookup(deep)("n4999"), 0);
 });

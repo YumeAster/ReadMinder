@@ -386,3 +386,36 @@ export function isSameFilter(a: CategoryFilter, b: CategoryFilter): boolean {
   if (a.kind !== b.kind) return false;
   return a.kind !== "category" || (b.kind === "category" && a.id === b.id);
 }
+
+/**
+ * 카테고리가 속한 "최상위 카테고리"가 최상위들 중 몇 번째인지(0부터)를 알려주는 함수를 만든다.
+ * 화면에서 카테고리마다 색(책갈피 색)을 다르게 보여주는 데 쓴다.
+ * - 하위 카테고리는 최상위 조상과 같은 번호가 되어 같은 색으로 묶인다.
+ * - 미분류이거나 없는 카테고리면 null이다.
+ * - 번호는 최상위 카테고리를 만든 순서(저장된 순서)를 따른다. 해시로 정하면 최상위가 몇 개만 되어도 색이 겹치기 쉬워서 이 방식을 쓴다.
+ *   그 대신 앞쪽 최상위 카테고리를 지우면 뒤쪽의 색이 한 칸씩 당겨진다.
+ * 목록을 그릴 때마다 링크 수만큼 부르므로, 카테고리 표는 한 번만 만든다.
+ */
+export function createRootIndexLookup(
+  categories: readonly Category[],
+): (categoryId: string | null) => number | null {
+  const byId = new Map(categories.map((category) => [category.id, category] as const));
+  const rootOrder = new Map<string, number>();
+  for (const category of categories) {
+    if (category.parentId === null) rootOrder.set(category.id, rootOrder.size);
+  }
+
+  return (categoryId) => {
+    if (categoryId === null) return null;
+
+    // 위로 올라가며 최상위를 찾는다. 이미 지나온 곳을 다시 만나면(잘못된 순환 데이터) 포기한다.
+    const visited = new Set<string>();
+    let current = byId.get(categoryId);
+    while (current !== undefined && current.parentId !== null) {
+      if (visited.has(current.id)) return null;
+      visited.add(current.id);
+      current = byId.get(current.parentId);
+    }
+    return current === undefined ? null : (rootOrder.get(current.id) ?? null);
+  };
+}

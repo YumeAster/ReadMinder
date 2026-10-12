@@ -21,6 +21,7 @@
       </form>
 
       <p id="message" role="alert"></p>
+      <p id="status" role="status"></p>
 
       <div id="duplicate-notice" role="alert" hidden>
         <span id="duplicate-text"></span>
@@ -30,6 +31,13 @@
       <h2>저장한 링크</h2>
       <p id="empty-notice">아직 저장한 링크가 없습니다. 위에 주소를 입력해 저장해 보세요.</p>
       <ul id="link-list"></ul>
+
+      <details id="trash-section">
+        <summary id="trash-summary">휴지통</summary>
+        <p id="trash-notice"></p>
+        <p id="trash-empty">휴지통이 비어 있습니다.</p>
+        <ul id="trash-list"></ul>
+      </details>
     </main>
 
     <script type="module" src="main.js"></script>

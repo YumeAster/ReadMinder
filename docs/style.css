@@ -31,6 +31,11 @@ button {
   min-height: 1.5em;
 }
 
+#status {
+  color: #1b5e20;
+  min-height: 1.5em;
+}
+
 #duplicate-notice {
   padding: 0.5rem;
   border: 1px solid #b00020;
@@ -68,4 +73,24 @@ li a {
 
 li.highlight {
   background: #fff3b0;
+}
+
+.item-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+#trash-section {
+  margin-top: 2rem;
+}
+
+#trash-summary {
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.trash-title {
+  font-weight: bold;
+  word-break: break-all;
 }

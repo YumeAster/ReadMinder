@@ -94,3 +94,15 @@ li.highlight {
   font-weight: bold;
   word-break: break-all;
 }
+
+/* 본 링크는 내용만 흐리게 한다. 버튼까지 흐리면 눌러도 되는지 알기 어렵다. */
+li.seen a,
+li.seen .link-url,
+li.seen .link-date {
+  opacity: 0.55;
+}
+
+.seen-label {
+  margin-left: 0.5rem;
+  font-size: 0.85rem;
+}

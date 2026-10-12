@@ -1,7 +1,14 @@
 // 빌드된 docs/links.js의 순수 함수를 확인한다. 실행: npm test
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { TRASH_RETENTION_DAYS, cleanUpTrash, daysUntilPurge, moveToTrash, restoreFromTrash } from "../docs/links.js";
+import {
+  TRASH_RETENTION_DAYS,
+  cleanUpTrash,
+  daysUntilPurge,
+  moveToTrash,
+  restoreFromTrash,
+  toggleSeen,
+} from "../docs/links.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = new Date("2026-10-12T12:00:00.000Z");
@@ -86,4 +93,23 @@ test("daysUntilPurge: 남은 일수를 올림하고 1~7로 맞춘다", () => {
   assert.equal(daysUntilPurge(trashedLink("x", ago(7 * DAY - 1)), NOW), 1);
   // 시계가 어긋나 삭제 시각이 미래인 경우에도 7을 넘기지 않는다
   assert.equal(daysUntilPurge(trashedLink("x", new Date(NOW.getTime() + 3 * DAY).toISOString()), NOW), 7);
+});
+
+// ---- 이미 본 링크 ----
+
+test("toggleSeen: 해당 링크의 seen만 뒤집고 순서는 그대로다", () => {
+  const next = toggleSeen([a, b, c], "b");
+  assert.deepEqual(next.map((l) => [l.id, l.seen]), [["a", false], ["b", true], ["c", false]]);
+  assert.deepEqual(toggleSeen(next, "b").map((l) => l.seen), [false, false, false]);
+});
+
+test("toggleSeen: 원본 배열과 항목은 바뀌지 않는다", () => {
+  const links = [a, b];
+  toggleSeen(links, "a");
+  assert.equal(links[0].seen, false);
+  assert.equal(a.seen, false);
+});
+
+test("toggleSeen: 없는 id면 undefined", () => {
+  assert.equal(toggleSeen([a], "zzz"), undefined);
 });

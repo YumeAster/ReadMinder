@@ -1,4 +1,4 @@
-import { TRASH_RETENTION_DAYS, cleanUpTrash, daysUntilPurge, moveToTrash, restoreFromTrash } from "./links.js";
+import { TRASH_RETENTION_DAYS, cleanUpTrash, daysUntilPurge, moveToTrash, restoreFromTrash, toggleSeen, } from "./links.js";
 import { loadLinks, loadTrash, saveLinks, saveTrash } from "./storage.js";
 import { defaultTitleFor, findLinkByUrl, parseUserUrl } from "./url.js";
 /** id로 요소를 찾고, 없거나 타입이 다르면 원인을 알 수 있게 에러를 던진다. */
@@ -74,6 +74,8 @@ function renderItem(link) {
     item.dataset["linkId"] = link.id;
     // 이동 버튼을 눌렀을 때 키보드·스크린리더 사용자도 같은 위치로 옮겨가도록 포커스를 받을 수 있게 한다.
     item.tabIndex = -1;
+    // 흐리게 보이는 것만으로는 상태를 알 수 없으므로, 아래에서 "본 링크" 글자도 함께 넣는다.
+    item.classList.toggle("seen", link.seen);
     const anchor = document.createElement("a");
     anchor.href = link.url;
     anchor.target = "_blank";
@@ -85,10 +87,20 @@ function renderItem(link) {
     const savedAt = document.createElement("div");
     savedAt.className = "link-date";
     savedAt.textContent = formatDate(link.createdAt);
+    const head = document.createElement("div");
+    head.append(anchor);
+    if (link.seen) {
+        const seenLabel = document.createElement("span");
+        seenLabel.className = "seen-label";
+        seenLabel.textContent = "본 링크";
+        head.append(seenLabel);
+    }
+    // 버튼 문구가 지금 상태가 아니라 누르면 일어날 일을 나타낸다.
+    const seenButtonLabel = link.seen ? "아직 안 봄" : "이미 본 링크";
     const actions = document.createElement("div");
     actions.className = "item-actions";
-    actions.append(createActionButton("delete", "삭제", `삭제: ${link.title}`));
-    item.append(anchor, address, savedAt, actions);
+    actions.append(createActionButton("toggle-seen", seenButtonLabel, `${seenButtonLabel}: ${link.title}`), createActionButton("delete", "삭제", `삭제: ${link.title}`));
+    item.append(head, address, savedAt, actions);
     return item;
 }
 function renderTrashItem(item, now) {
@@ -188,6 +200,21 @@ function handleDelete(linkId) {
     const neighborItem = neighbor === undefined ? null : findLinkItem(neighbor.id);
     (neighborItem ?? urlInput).focus();
 }
+function handleToggleSeen(linkId) {
+    clearFeedback();
+    const nextLinks = toggleSeen(links, linkId);
+    if (nextLinks === undefined)
+        return; // 이미 사라진 항목
+    const saved = saveLinks(nextLinks);
+    if (!saved.ok) {
+        showMessage(saved.message);
+        return;
+    }
+    links = nextLinks;
+    render();
+    // 목록을 새로 그리면 포커스가 사라지므로, 키보드 사용자가 이어서 쓸 수 있게 같은 항목의 같은 버튼으로 돌려준다.
+    findLinkItem(linkId)?.querySelector('button[data-action="toggle-seen"]')?.focus();
+}
 function handleRestore(linkId) {
     clearFeedback();
     const result = restoreFromTrash(links, trash, linkId);
@@ -223,6 +250,8 @@ listElement.addEventListener("click", (event) => {
     const clicked = readActionClick(event);
     if (clicked?.action === "delete")
         handleDelete(clicked.linkId);
+    if (clicked?.action === "toggle-seen")
+        handleToggleSeen(clicked.linkId);
 });
 trashList.addEventListener("click", (event) => {
     const clicked = readActionClick(event);

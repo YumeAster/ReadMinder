@@ -1,6 +1,12 @@
 /** 휴지통에 보관하는 기간(일). 이 기간이 지나면 영구 삭제한다 */
 export const TRASH_RETENTION_DAYS = 7;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+/** 한 링크의 "이미 본 링크" 표시를 뒤집는다. 해당 id가 없으면 undefined. 목록 순서는 바뀌지 않는다. */
+export function toggleSeen(links, linkId) {
+    if (!links.some((link) => link.id === linkId))
+        return undefined;
+    return links.map((link) => (link.id === linkId ? { ...link, seen: !link.seen } : link));
+}
 /** 링크를 목록에서 빼서 휴지통 맨 앞에 넣는다. 해당 id가 없으면 undefined. */
 export function moveToTrash(links, trash, linkId, now) {
     const target = links.find((link) => link.id === linkId);

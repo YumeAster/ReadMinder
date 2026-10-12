@@ -1,7 +1,7 @@
 import { TRASH_RETENTION_DAYS, cleanUpTrash, daysUntilPurge, moveToTrash, restoreFromTrash, toggleSeen, } from "./links.js";
 import { buildBookmarklet, isLocalAddress } from "./bookmarklet.js";
 import { parseImportHash } from "./import.js";
-import { repairCategories, sanitizeLinkCategories } from "./categories.js";
+import { addCategory, categoryPath, deleteCategory, flattenTree, renameCategory, repairCategories, sanitizeLinkCategories, } from "./categories.js";
 import { isListStorageKey, loadCategories, loadLinks, loadTrash, saveCategories, saveLinks, saveTrash, } from "./storage.js";
 import { defaultTitleFor, findLinkByUrl, parseUserUrl } from "./url.js";
 /** id로 요소를 찾고, 없거나 타입이 다르면 원인을 알 수 있게 에러를 던진다. */
@@ -28,12 +28,20 @@ const trashSummary = getElement("trash-summary", HTMLElement);
 const trashNotice = getElement("trash-notice", HTMLParagraphElement);
 const trashEmptyNotice = getElement("trash-empty", HTMLParagraphElement);
 const trashList = getElement("trash-list", HTMLUListElement);
+const categorySummary = getElement("category-summary", HTMLElement);
+const categoryForm = getElement("category-form", HTMLFormElement);
+const categoryNameInput = getElement("category-name-input", HTMLInputElement);
+const categoryParentSelect = getElement("category-parent-select", HTMLSelectElement);
+const categoryEmptyNotice = getElement("category-empty", HTMLParagraphElement);
+const categoryList = getElement("category-list", HTMLUListElement);
 const bookmarkletLink = getElement("bookmarklet-link", HTMLAnchorElement);
 const copyBookmarkletButton = getElement("copy-bookmarklet", HTMLButtonElement);
 const bookmarkletAppUrl = getElement("bookmarklet-app-url", HTMLElement);
 const bookmarkletLocalWarning = getElement("bookmarklet-local-warning", HTMLParagraphElement);
 /** 이동한 항목을 강조해 두는 시간. 눈으로 위치를 찾기에 충분한 정도로 잡았다. */
 const HIGHLIGHT_MS = 2000;
+/** 카테고리 목록에서 들여쓰기로 보여주는 최대 단계. 깊이에는 제한이 없지만, 너무 깊으면 화면 밖으로 밀려나 이 값에서 멈춘다. */
+const MAX_INDENT_LEVELS = 8;
 /** 최신 항목이 앞에 오는 순서로 유지한다. 저장소에서 읽어 채운다 (loadStateFromStorage). */
 let links = [];
 /** 카테고리. 최상위부터 하위까지 한 목록에 담고, 상위는 parentId로 가리킨다. 저장소에서 읽어 채운다. */
@@ -252,6 +260,153 @@ function handleToggleSeen(linkId) {
     // 목록을 새로 그리면 포커스가 사라지므로, 키보드 사용자가 이어서 쓸 수 있게 같은 항목의 같은 버튼으로 돌려준다.
     findLinkItem(linkId)?.querySelector('button[data-action="toggle-seen"]')?.focus();
 }
+function createOption(value, label) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    return option;
+}
+function renderCategoryRow(node) {
+    const row = document.createElement("li");
+    row.dataset["categoryId"] = node.category.id;
+    row.style.paddingLeft = `${Math.min(node.depth, MAX_INDENT_LEVELS)}rem`;
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.autocomplete = "off";
+    nameInput.value = node.category.name;
+    nameInput.setAttribute("aria-label", `카테고리 이름: ${node.path}`);
+    const actions = document.createElement("div");
+    actions.className = "item-actions";
+    actions.append(nameInput, createActionButton("rename-category", "이름 변경", `이름 변경: ${node.path}`), createActionButton("delete-category", "삭제", `삭제: ${node.path}`));
+    row.append(actions);
+    // 들여쓰기만으로는 어느 카테고리 안에 있는지 알기 어려우니, 하위 카테고리에는 경로도 글자로 보여준다.
+    if (node.depth > 0) {
+        const path = document.createElement("div");
+        path.className = "link-url";
+        path.textContent = node.path;
+        row.append(path);
+    }
+    return row;
+}
+/** 카테고리 관리 영역(새 카테고리의 위치 선택 상자와 카테고리 목록)을 다시 그린다. 카테고리가 바뀔 때만 부른다. */
+function renderCategoryManager() {
+    const nodes = flattenTree(categories);
+    // 입력 중이던 위치 선택은 그 카테고리가 아직 있으면 유지한다.
+    const previousParent = categoryParentSelect.value;
+    categoryParentSelect.replaceChildren(createOption("", "최상위"), ...nodes.map((node) => createOption(node.category.id, node.path)));
+    categoryParentSelect.value = nodes.some((node) => node.category.id === previousParent) ? previousParent : "";
+    categoryList.replaceChildren(...nodes.map(renderCategoryRow));
+    categoryEmptyNotice.hidden = nodes.length > 0;
+    categorySummary.textContent = `카테고리 관리 (${nodes.length})`;
+}
+function findCategoryInput(categoryId) {
+    return categoryList.querySelector(`li[data-category-id="${CSS.escape(categoryId)}"] input`);
+}
+function handleAddCategory() {
+    clearFeedback();
+    const parentId = categoryParentSelect.value === "" ? null : categoryParentSelect.value;
+    const result = addCategory(categories, categoryNameInput.value, parentId, crypto.randomUUID(), new Date());
+    if (!result.ok) {
+        showMessage(result.message);
+        categoryNameInput.focus();
+        return;
+    }
+    const saved = saveCategories(result.value.categories);
+    if (!saved.ok) {
+        showMessage(saved.message);
+        return;
+    }
+    categories = result.value.categories;
+    renderCategoryManager();
+    categoryNameInput.value = "";
+    // 입력한 이름이 공백 정리 등으로 달라졌을 수 있어서, 실제로 저장된 이름을 보여준다.
+    showStatus(`"${categoryPath(categories, result.value.category.id) ?? result.value.category.name}" 카테고리를 만들었습니다.`);
+    categoryNameInput.focus();
+}
+function handleRenameCategory(categoryId) {
+    clearFeedback();
+    const input = findCategoryInput(categoryId);
+    const target = categories.find((category) => category.id === categoryId);
+    if (input === null || target === undefined) {
+        showMessage("카테고리를 찾지 못했습니다. 다른 곳에서 삭제되었을 수 있습니다.");
+        return;
+    }
+    const result = renameCategory(categories, categoryId, input.value);
+    if (!result.ok) {
+        showMessage(result.message);
+        input.focus();
+        return;
+    }
+    if (result.value.category.name === target.name) {
+        // 바뀐 것이 없다. 입력칸에 남은 군더더기(공백 등)만 정리해서 되돌린다.
+        renderCategoryManager();
+        showStatus("이름이 그대로입니다.");
+        findCategoryInput(categoryId)?.focus();
+        return;
+    }
+    const saved = saveCategories(result.value.categories);
+    if (!saved.ok) {
+        showMessage(saved.message);
+        input.focus();
+        return;
+    }
+    categories = result.value.categories;
+    renderCategoryManager();
+    showStatus(`"${target.name}" 카테고리의 이름을 "${result.value.category.name}"(으)로 바꿨습니다.`);
+    findCategoryInput(categoryId)?.focus();
+}
+/**
+ * 카테고리 삭제로 바뀌는 링크 목록과 카테고리 목록을 함께 저장한다. 링크를 먼저 저장하고, 카테고리 저장이 실패하면 링크를 되돌린다.
+ * 되돌리기마저 실패해도 링크는 사라지지 않는다. 없는 카테고리를 가리키는 링크는 읽을 때 미분류로 보기 때문이다.
+ */
+function persistCategoryDelete(plan) {
+    if (plan.movedLinkCount === 0)
+        return saveCategories(plan.categories);
+    const linksSaved = saveLinks(plan.links);
+    if (!linksSaved.ok)
+        return linksSaved;
+    const categoriesSaved = saveCategories(plan.categories);
+    if (categoriesSaved.ok)
+        return categoriesSaved;
+    const rolledBack = saveLinks(links);
+    if (!rolledBack.ok) {
+        console.error("되돌리기에 실패했습니다. 링크가 삭제된 카테고리를 가리킬 수 있지만, 읽을 때 미분류로 처리됩니다.");
+    }
+    return categoriesSaved;
+}
+function handleDeleteCategory(categoryId) {
+    clearFeedback();
+    const path = categoryPath(categories, categoryId);
+    const plan = deleteCategory(categories, links, categoryId);
+    if (path === null || plan === undefined) {
+        showMessage("카테고리를 찾지 못했습니다. 다른 곳에서 삭제되었을 수 있습니다.");
+        return;
+    }
+    const subcategoryCount = plan.removedCategoryCount - 1;
+    const lines = [`"${path}" 카테고리를 삭제할까요?`];
+    if (subcategoryCount > 0)
+        lines.push(`하위 카테고리 ${subcategoryCount}개도 함께 삭제됩니다.`);
+    if (plan.movedLinkCount > 0)
+        lines.push(`링크 ${plan.movedLinkCount}개는 삭제되지 않고 '미분류'로 이동합니다.`);
+    lines.push("카테고리 삭제는 되돌릴 수 없습니다.");
+    if (!window.confirm(lines.join("\n")))
+        return;
+    const saved = persistCategoryDelete(plan);
+    if (!saved.ok) {
+        showMessage(saved.message);
+        return;
+    }
+    categories = plan.categories;
+    links = plan.links;
+    render();
+    renderCategoryManager();
+    const details = [
+        subcategoryCount > 0 ? `하위 카테고리 ${subcategoryCount}개도 삭제했습니다.` : "",
+        plan.movedLinkCount > 0 ? `링크 ${plan.movedLinkCount}개를 미분류로 옮겼습니다.` : "",
+    ].filter((text) => text !== "");
+    showStatus([`"${path}" 카테고리를 삭제했습니다.`, ...details].join(" "));
+    categoryNameInput.focus();
+}
 function handleRestore(linkId) {
     clearFeedback();
     const result = restoreFromTrash(links, trash, linkId, new Set(categories.map((category) => category.id)));
@@ -272,28 +427,52 @@ function handleRestore(linkId) {
     showStatus(`"${result.restored.title}" 링크를 복구했습니다.`);
     goToLink(result.restored.id); // 복구된 항목 위치로 이동해 강조한다 (중복 안내의 이동 버튼과 같은 동작).
 }
-/** 클릭된 버튼의 action과, 그 버튼이 속한 항목의 링크 id를 찾는다. 버튼이 아닌 곳을 눌렀다면 null. */
-function readActionClick(event) {
+/**
+ * 클릭된 버튼의 action과, 그 버튼이 속한 항목의 id(링크 항목은 "linkId", 카테고리 항목은 "categoryId")를 찾는다.
+ * 버튼이 아닌 곳을 눌렀다면 null.
+ */
+function readActionClick(event, idKey) {
     if (!(event.target instanceof Element))
         return null;
     const button = event.target.closest("button[data-action]");
     const action = button?.dataset["action"];
-    const linkId = button?.closest("li")?.dataset["linkId"];
-    if (action === undefined || linkId === undefined)
+    const id = button?.closest("li")?.dataset[idKey];
+    if (action === undefined || id === undefined)
         return null;
-    return { action, linkId };
+    return { action, id };
 }
 listElement.addEventListener("click", (event) => {
-    const clicked = readActionClick(event);
+    const clicked = readActionClick(event, "linkId");
     if (clicked?.action === "delete")
-        handleDelete(clicked.linkId);
+        handleDelete(clicked.id);
     if (clicked?.action === "toggle-seen")
-        handleToggleSeen(clicked.linkId);
+        handleToggleSeen(clicked.id);
 });
 trashList.addEventListener("click", (event) => {
-    const clicked = readActionClick(event);
+    const clicked = readActionClick(event, "linkId");
     if (clicked?.action === "restore")
-        handleRestore(clicked.linkId);
+        handleRestore(clicked.id);
+});
+categoryList.addEventListener("click", (event) => {
+    const clicked = readActionClick(event, "categoryId");
+    if (clicked?.action === "rename-category")
+        handleRenameCategory(clicked.id);
+    if (clicked?.action === "delete-category")
+        handleDeleteCategory(clicked.id);
+});
+// 이름 입력칸에서 Enter를 누르면 이름 변경으로 본다.
+categoryList.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || !(event.target instanceof HTMLInputElement))
+        return;
+    const categoryId = event.target.closest("li")?.dataset["categoryId"];
+    if (categoryId === undefined)
+        return;
+    event.preventDefault();
+    handleRenameCategory(categoryId);
+});
+categoryForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    handleAddCategory();
 });
 goToDuplicateButton.addEventListener("click", () => {
     if (duplicateTargetId !== null)
@@ -414,6 +593,7 @@ function applyImportFromHash() {
 window.addEventListener("storage", (event) => {
     if (!isListStorageKey(event.key))
         return;
+    const categoriesBefore = JSON.stringify(categories);
     const warning = loadStateFromStorage();
     if (warning !== "")
         showMessage(warning);
@@ -422,10 +602,14 @@ window.addEventListener("storage", (event) => {
         hideDuplicateNotice();
     }
     render();
+    // 카테고리 이름을 고치는 중일 수 있으니, 카테고리가 실제로 바뀐 경우에만 관리 영역을 다시 그린다.
+    if (JSON.stringify(categories) !== categoriesBefore)
+        renderCategoryManager();
     showStatus("다른 탭에서 바뀐 내용을 반영했습니다.");
 });
 trashNotice.textContent = `삭제한 링크는 ${TRASH_RETENTION_DAYS}일 동안 보관된 뒤 영구 삭제됩니다.`;
 showMessage(loadStateFromStorage());
 render();
+renderCategoryManager();
 setUpBookmarklet();
 applyImportFromHash();

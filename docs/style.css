@@ -128,3 +128,21 @@ li.seen .link-date {
 #bookmarklet-app-url {
   word-break: break-all;
 }
+
+#category-section {
+  margin-top: 1rem;
+}
+
+#category-section summary {
+  cursor: pointer;
+  font-weight: bold;
+}
+
+#category-form {
+  margin: 0.5rem 0;
+}
+
+#category-list .item-actions input {
+  flex: 1;
+  min-width: 0;
+}

@@ -43,6 +43,19 @@
         <ul id="trash-list"></ul>
       </details>
 
+      <details id="category-section">
+        <summary id="category-summary">카테고리 관리</summary>
+        <form id="category-form" novalidate>
+          <label for="category-name-input">새 카테고리 이름</label>
+          <input id="category-name-input" type="text" autocomplete="off" />
+          <label for="category-parent-select">위치 (어느 카테고리 안에 만들지)</label>
+          <select id="category-parent-select"></select>
+          <button type="submit">카테고리 추가</button>
+        </form>
+        <p id="category-empty">만든 카테고리가 없습니다.</p>
+        <ul id="category-list"></ul>
+      </details>
+
       <details id="bookmarklet-section">
         <summary>북마크로 저장하기 (제목 자동 입력)</summary>
         <p>

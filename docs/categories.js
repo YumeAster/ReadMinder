@@ -63,3 +63,191 @@ export function sanitizeLinkCategories(links, categories) {
     const ids = new Set(categories.map((category) => category.id));
     return links.map((link) => link.categoryId === null || ids.has(link.categoryId) ? link : { ...link, categoryId: null });
 }
+/** 목록에서 "전체"와 "미분류" 보기 버튼으로 쓰는 이름이라 카테고리 이름으로는 쓸 수 없다 */
+export const RESERVED_CATEGORY_NAMES = ["전체", "미분류"];
+/** 카테고리 이름 최대 길이 (글자 수 기준) */
+export const MAX_CATEGORY_NAME_LENGTH = 30;
+/**
+ * 카테고리 이름을 올바른 형식으로 고친다. 입력이 어떤 모양이든 거절하지 않고 고쳐서 돌려준다.
+ * - 한글 자모가 분리된 형태(macOS 파일 이름 등에서 복사한 글자)를 합쳐서 같은 글자는 같은 값이 되게 한다.
+ * - 보이지 않는 글자(너비 없는 공백)와 제어 문자를 지운다.
+ * - 줄바꿈·탭·전각 공백·연속 공백은 공백 하나로 줄이고, 앞뒤 공백을 지운다.
+ * 이모지를 이루는 글자 접합 문자(ZWJ)는 지우지 않는다.
+ */
+export function normalizeCategoryName(raw) {
+    return raw
+        .normalize("NFC")
+        .replace(/[\u200B\u2060]/g, "")
+        .replace(/\s+/g, " ")
+        .replace(/\p{Cc}/gu, "")
+        .replace(/ {2,}/g, " ")
+        .trim();
+}
+/** 같은 이름인지 비교하기 위한 값. 대소문자를 구분하지 않는다. */
+function nameKey(name) {
+    return normalizeCategoryName(name).toLowerCase();
+}
+/**
+ * 이름을 정리하고, 쓸 수 있는 이름인지 검사한다. 통과하면 정리된 이름을 돌려준다.
+ * 정리(공백 등)는 자동으로 하고, 그 밖의 규칙(비어 있음, 길이, 예약어, 같은 위치의 중복)은 거절하고 이유를 알려준다.
+ * 중복은 같은 상위 카테고리 안에서만 따진다 (다른 위치에는 같은 이름을 쓸 수 있다).
+ * ignoreId는 이름을 바꿀 때 자기 자신을 중복으로 보지 않기 위한 값이다.
+ */
+export function checkCategoryName(rawName, categories, parentId, ignoreId = null) {
+    const name = normalizeCategoryName(rawName);
+    if (name === "") {
+        return { ok: false, message: "카테고리 이름을 입력해 주세요." };
+    }
+    const length = Array.from(name).length;
+    if (length > MAX_CATEGORY_NAME_LENGTH) {
+        return {
+            ok: false,
+            message: `카테고리 이름은 ${MAX_CATEGORY_NAME_LENGTH}자까지 쓸 수 있습니다. (지금 ${length}자)`,
+        };
+    }
+    const key = nameKey(name);
+    if (RESERVED_CATEGORY_NAMES.some((reserved) => nameKey(reserved) === key)) {
+        return { ok: false, message: `"${name}"은(는) 목록 보기에 쓰이는 이름이라 카테고리 이름으로 쓸 수 없습니다.` };
+    }
+    const sameName = categories.find((category) => category.parentId === parentId && category.id !== ignoreId && nameKey(category.name) === key);
+    if (sameName !== undefined) {
+        return { ok: false, message: `같은 위치에 "${sameName.name}" 카테고리가 이미 있습니다.` };
+    }
+    return { ok: true, value: name };
+}
+/** 카테고리를 만든다. 새 카테고리는 같은 위치의 형제들 맨 뒤에 놓인다. parentId가 null이면 최상위다. */
+export function addCategory(categories, rawName, parentId, id, now) {
+    if (parentId !== null && !categories.some((category) => category.id === parentId)) {
+        return { ok: false, message: "상위 카테고리를 찾지 못했습니다. 다른 곳에서 삭제되었을 수 있습니다." };
+    }
+    const checked = checkCategoryName(rawName, categories, parentId);
+    if (!checked.ok)
+        return checked;
+    const category = { id, name: checked.value, parentId, createdAt: now.toISOString() };
+    return { ok: true, value: { categories: [...categories, category], category } };
+}
+/** 카테고리 이름을 바꾼다. 위치(상위 카테고리)와 순서는 그대로다. */
+export function renameCategory(categories, categoryId, rawName) {
+    const target = categories.find((category) => category.id === categoryId);
+    if (target === undefined) {
+        return { ok: false, message: "카테고리를 찾지 못했습니다. 다른 곳에서 삭제되었을 수 있습니다." };
+    }
+    const checked = checkCategoryName(rawName, categories, target.parentId, categoryId);
+    if (!checked.ok)
+        return checked;
+    const renamed = { ...target, name: checked.value };
+    return {
+        ok: true,
+        value: {
+            categories: categories.map((category) => (category.id === categoryId ? renamed : category)),
+            category: renamed,
+        },
+    };
+}
+/** 카테고리와 그 아래 모든 하위 카테고리의 id. 깊이에 제한이 없다. */
+export function subtreeIds(categories, rootId) {
+    const childrenOf = new Map();
+    for (const category of categories) {
+        if (category.parentId === null)
+            continue;
+        const siblings = childrenOf.get(category.parentId);
+        if (siblings === undefined)
+            childrenOf.set(category.parentId, [category.id]);
+        else
+            siblings.push(category.id);
+    }
+    // 이미 담은 id는 건너뛰므로, 데이터가 잘못되어 순환이 있어도 끝난다.
+    const ids = new Set();
+    const pending = [rootId];
+    for (let id = pending.pop(); id !== undefined; id = pending.pop()) {
+        if (ids.has(id))
+            continue;
+        ids.add(id);
+        pending.push(...(childrenOf.get(id) ?? []));
+    }
+    return ids;
+}
+/**
+ * 카테고리와 그 아래 모든 하위 카테고리를 지운다. 링크는 지우지 않고 미분류로 옮긴다.
+ * 해당 id가 없으면 undefined.
+ */
+export function deleteCategory(categories, links, categoryId) {
+    if (!categories.some((category) => category.id === categoryId))
+        return undefined;
+    const removedIds = subtreeIds(categories, categoryId);
+    let movedLinkCount = 0;
+    const nextLinks = links.map((link) => {
+        if (link.categoryId === null || !removedIds.has(link.categoryId))
+            return link;
+        movedLinkCount += 1;
+        return { ...link, categoryId: null };
+    });
+    return {
+        categories: categories.filter((category) => !removedIds.has(category.id)),
+        links: nextLinks,
+        removedCategoryCount: removedIds.size,
+        movedLinkCount,
+    };
+}
+/** 카테고리를 화면에 보여줄 순서(상위 다음에 그 하위, 형제는 저장된 순서)로 펼친다. */
+export function flattenTree(categories) {
+    const childrenOf = new Map();
+    for (const category of categories) {
+        const siblings = childrenOf.get(category.parentId);
+        if (siblings === undefined)
+            childrenOf.set(category.parentId, [category]);
+        else
+            siblings.push(category);
+    }
+    const nodes = [];
+    const visited = new Set();
+    // 앞쪽 형제가 먼저 꺼내지도록 거꾸로 쌓는다.
+    const pending = [];
+    const pushChildren = (parentId, depth, parentPath) => {
+        const children = childrenOf.get(parentId) ?? [];
+        for (let i = children.length - 1; i >= 0; i--) {
+            const child = children[i];
+            if (child !== undefined)
+                pending.push({ category: child, depth, parentPath });
+        }
+    };
+    pushChildren(null, 0, "");
+    for (let item = pending.pop(); item !== undefined; item = pending.pop()) {
+        if (visited.has(item.category.id))
+            continue;
+        visited.add(item.category.id);
+        const path = item.parentPath === "" ? item.category.name : `${item.parentPath} / ${item.category.name}`;
+        nodes.push({ category: item.category, depth: item.depth, path });
+        pushChildren(item.category.id, item.depth + 1, path);
+    }
+    return nodes;
+}
+/** 카테고리의 경로 이름 (예: "개발 / 프론트엔드"). 없는 카테고리면 null. */
+export function categoryPath(categories, categoryId) {
+    return flattenTree(categories).find((node) => node.category.id === categoryId)?.path ?? null;
+}
+/** 링크 수를 센다. 상위 카테고리의 수에는 하위 카테고리의 링크도 들어간다. */
+export function countLinks(categories, links) {
+    const knownIds = new Set(categories.map((category) => category.id));
+    const ownCounts = new Map();
+    let uncategorized = 0;
+    for (const link of links) {
+        if (link.categoryId === null || !knownIds.has(link.categoryId)) {
+            uncategorized += 1;
+        }
+        else {
+            ownCounts.set(link.categoryId, (ownCounts.get(link.categoryId) ?? 0) + 1);
+        }
+    }
+    // 펼친 순서에서는 하위가 항상 상위보다 뒤에 오므로, 거꾸로 돌면 하위의 합이 먼저 모인다.
+    const byCategory = new Map();
+    const childSums = new Map();
+    for (const node of flattenTree(categories).reverse()) {
+        const { id, parentId } = node.category;
+        const count = (ownCounts.get(id) ?? 0) + (childSums.get(id) ?? 0);
+        byCategory.set(id, count);
+        if (parentId !== null)
+            childSums.set(parentId, (childSums.get(parentId) ?? 0) + count);
+    }
+    return { total: links.length, uncategorized, byCategory };
+}

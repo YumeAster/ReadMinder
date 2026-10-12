@@ -36,6 +36,11 @@ button {
   min-height: 1.5em;
 }
 
+#import-notice {
+  padding: 0.5rem;
+  border: 1px solid #b26a00;
+}
+
 #duplicate-notice {
   padding: 0.5rem;
   border: 1px solid #b00020;

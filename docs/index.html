@@ -10,6 +10,10 @@
     <main>
       <h1>링크 저장</h1>
 
+      <p id="import-notice" role="alert" hidden>
+        다른 페이지에서 전달된 링크입니다. 북마크를 직접 눌러 저장하려던 것이 아니라면 저장하지 마세요.
+      </p>
+
       <form id="link-form" novalidate>
         <label for="url-input">주소</label>
         <input id="url-input" type="text" inputmode="url" autocomplete="off" placeholder="https://example.com" />
@@ -17,7 +21,7 @@
         <label for="title-input">제목 (선택)</label>
         <input id="title-input" type="text" autocomplete="off" placeholder="비워두면 도메인이 제목이 됩니다" />
 
-        <button type="submit">저장</button>
+        <button id="save-button" type="submit">저장</button>
       </form>
 
       <p id="message" role="alert"></p>

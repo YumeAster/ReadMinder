@@ -6,6 +6,7 @@ import {
   restoreFromTrash,
   toggleSeen,
 } from "./links.js";
+import { parseImportHash } from "./import.js";
 import { isListStorageKey, loadLinks, loadTrash, saveLinks, saveTrash } from "./storage.js";
 import type { Result, SavedLink, TrashedLink } from "./types.js";
 import { defaultTitleFor, findLinkByUrl, parseUserUrl } from "./url.js";
@@ -22,6 +23,8 @@ function getElement<T extends HTMLElement>(id: string, type: new () => T): T {
 const form = getElement("link-form", HTMLFormElement);
 const urlInput = getElement("url-input", HTMLInputElement);
 const titleInput = getElement("title-input", HTMLInputElement);
+const saveButton = getElement("save-button", HTMLButtonElement);
+const importNotice = getElement("import-notice", HTMLParagraphElement);
 const messageBox = getElement("message", HTMLParagraphElement);
 const statusBox = getElement("status", HTMLParagraphElement);
 const listElement = getElement("link-list", HTMLUListElement);
@@ -44,6 +47,8 @@ let trash: readonly TrashedLink[] = [];
 /** "해당 링크로 이동" 버튼이 가리키는 항목의 id. 중복 안내가 떠 있을 때만 값이 있다. */
 let duplicateTargetId: string | null = null;
 let highlightTimer: number | undefined;
+/** 가져오기(북마클릿)로 열린 뒤 아직 저장하지 않았는지. 저장 성공 시 돌아가는 방법을 안내하는 데 쓴다. */
+let importHintPending = false;
 
 /**
  * 저장소에서 링크와 휴지통을 읽어 화면 상태로 삼는다. 보관 기간이 지난 휴지통 항목은 이때 정리한다.
@@ -380,8 +385,50 @@ form.addEventListener("submit", (event) => {
   render();
   form.reset();
   showMessage("");
+  importNotice.hidden = true;
   urlInput.focus();
+
+  if (importHintPending) {
+    importHintPending = false;
+    showStatus("저장했습니다. 브라우저의 뒤로 가기로 읽던 페이지로 돌아갈 수 있습니다.");
+  }
 });
+
+/**
+ * 주소 끝의 #url=...&title=...로 열렸다면(북마클릿) 입력창을 채우고 경고를 보여준다.
+ * 자동으로 저장하지는 않는다. 같은 형식의 주소는 누구나 만들어 보낼 수 있어서,
+ * 사용자가 내용을 보고 저장을 눌러야 목록에 들어가게 한다.
+ * 이 처리는 페이지가 열릴 때 한 번만 한다 (열린 뒤 주소창만 바꾸는 경우는 다루지 않는다).
+ */
+function applyImportFromHash(): void {
+  const imported = parseImportHash(window.location.hash);
+  if (imported === null) return;
+
+  // 새로고침이나 주소 공유에 정보가 딸려가지 않도록, 읽자마자 주소창에서 지운다.
+  window.history.replaceState(null, "", window.location.pathname + window.location.search);
+
+  urlInput.value = imported.url;
+  titleInput.value = imported.title;
+  importNotice.hidden = false;
+  importHintPending = true;
+
+  // 잘못된 주소여도 입력창은 채워 둔다. 사용자가 고쳐서 저장할 수 있게 하기 위해서다.
+  const parsed = parseUserUrl(imported.url);
+  if (!parsed.ok) {
+    showMessage(parsed.message);
+    urlInput.focus();
+    return;
+  }
+
+  const existing = findLinkByUrl(links, parsed.value);
+  if (existing !== undefined) {
+    showDuplicateNotice(existing);
+    goToDuplicateButton.focus();
+    return;
+  }
+
+  saveButton.focus();
+}
 
 // 다른 탭에서 링크나 휴지통이 바뀌면 저장소를 다시 읽는다. 그러지 않으면 이 탭이 옛 목록을 들고 있다가
 // 삭제·표시 변경 때 목록 전체를 다시 저장하면서, 다른 탭에서 추가한 링크를 덮어써 잃게 된다.
@@ -403,3 +450,4 @@ window.addEventListener("storage", (event) => {
 trashNotice.textContent = `삭제한 링크는 ${TRASH_RETENTION_DAYS}일 동안 보관된 뒤 영구 삭제됩니다.`;
 showMessage(loadStateFromStorage());
 render();
+applyImportFromHash();
